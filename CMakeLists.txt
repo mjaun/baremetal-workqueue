@@ -14,4 +14,5 @@ add_executable(app)
 app_include_directories(include)
 
 add_subdirectory(src/platform)
+add_subdirectory(src/services)
 add_subdirectory(src/application)

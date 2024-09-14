@@ -22,7 +22,7 @@ file(GLOB hal_sources stm32cube/Drivers/STM32F4xx_HAL_Driver/Src/*.c)
 app_sources(
     drivers/uart_stm32.c
     drivers/gpio_stm32.c
-    drivers/sleep_stm32.c
+    drivers/system_stm32.c
     peripherals.c
     ${core_sources}
     ${hal_sources}

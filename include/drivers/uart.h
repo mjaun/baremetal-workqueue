@@ -1,7 +1,6 @@
 #pragma once
 
-#include <stdint.h>
-#include <stdlib.h>
+#include "util/types.h"
 
 struct uart;
 
