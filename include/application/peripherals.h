@@ -1,11 +1,17 @@
 #pragma once
 
-typedef struct gpio_pin* gpio_pin_handle_t;
-typedef struct uart* uart_handle_t;
+struct gpio_pin;
+struct uart;
 
+/**
+ * Struct containing handles for all peripherals accessed by the application.
+ */
 struct peripherals {
-    gpio_pin_handle_t user_led;
-    uart_handle_t debug_uart;
+    struct gpio_pin* user_led;
+    struct uart* debug_uart;
 };
 
+/**
+ * Struct containing handles for all peripherals accessed by the application.
+ */
 extern const struct peripherals peripherals;

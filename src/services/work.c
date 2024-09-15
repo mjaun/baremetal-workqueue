@@ -16,14 +16,6 @@ static void set_flags(struct work *work, uint32_t flags);
 static void clear_flags(struct work *work, uint32_t flags);
 static bool_t test_flags_any(struct work *work, uint32_t flags);
 
-/**
- * Enters a loop to execute work items.
- *
- * This function does not return.
- *
- * This might be optimized by going to a low power mode until the next scheduled work
- * item is ready or another item is submitted via ISR.
- */
 void work_run()
 {
     while (true) {
@@ -33,22 +25,6 @@ void work_run()
     }
 }
 
-/**
- * Submits an item for execution.
- *
- * If the item is already submitted, this function does nothing.
- * If the item is already scheduled, the schedule is cancelled and it is submitted.
- *
- * If two items are submitted, the item with higher priority is executed first.
- * If two items are submitted with the same priority, the first submitted item is executed first.
- *
- * Note that work items are always executed until completion. This means that an already running low
- * priority item may delay a submitted high priority item.
- *
- * This function is safe to be called from ISRs.
- *
- * @param work Item to submit.
- */
 void work_submit(struct work *work)
 {
     system_critical_section_enter();
@@ -69,63 +45,27 @@ void work_submit(struct work *work)
     system_critical_section_exit();
 }
 
-/**
- * Schedules an item to be submitted after a delay.
- *
- * If the item is already scheduled or submitted, this function does nothing.
- * When scheduled items are submitted, the same rules apply as for `work_submit()`.
- *
- * This function is safe to be called from ISRs.
- *
- * @param work Item to schedule.
- * @param delay Delay in milliseconds.
- */
 void work_schedule_after(struct work *work, u32_ms_t delay)
 {
-    uint64_t scheduled_uptime = system_uptime_get() + (delay * 1000ULL);
-
-    system_critical_section_enter();
-
-    if (!test_flags_any(work, WORK_ITEM_SCHEDULED | WORK_ITEM_SUBMITTED)) {
-        schedule_add_locked(work, scheduled_uptime);
-    }
-
-    system_critical_section_exit();
+    work_schedule_at(work, system_uptime_get() + (delay * 1000ULL));
 }
 
-/**
- * Schedules an item to be submitted after a delay relative to the last time it was scheduled.
- *
- * If the item is already scheduled or submitted, this function does nothing.
- * When scheduled items are submitted, the same rules apply as for `work_submit()`.
- *
- * This function is safe to be called from ISRs.
- *
- * @param work Item to schedule.
- * @param delay Delay in milliseconds.
- */
 void work_schedule_again(struct work *work, u32_ms_t delay)
 {
-    uint64_t scheduled_uptime = work->scheduled_uptime + (delay * 1000ULL);
+    work_schedule_at(work, work->scheduled_uptime + (delay * 1000ULL));
+}
 
+void work_schedule_at(struct work *work, u64_us_t uptime)
+{
     system_critical_section_enter();
 
     if (!test_flags_any(work, WORK_ITEM_SCHEDULED | WORK_ITEM_SUBMITTED)) {
-        schedule_add_locked(work, scheduled_uptime);
+        schedule_add_locked(work, uptime);
     }
 
     system_critical_section_exit();
 }
 
-/**
- * Removes an item from the scheduled queue.
- *
- * If the item is not scheduled or already submitted, this function does nothing.
- *
- * This function is safe to be called from ISRs.
- *
- * @param work Item to remove from schedule.
- */
 void work_schedule_cancel(struct work *work)
 {
     system_critical_section_enter();
@@ -223,7 +163,7 @@ void sleep_until_ready()
 
         u64_us_t wakeup_timeout = scheduled_work->scheduled_uptime - current_uptime;
 
-        // don't go to sleep if wake-up cannot be scheduled
+        // don't go to sleep if wake-up cannot be scheduled (timeout too short)
         if (!system_schedule_wakeup(wakeup_timeout)) {
             system_critical_section_exit();
             return;
