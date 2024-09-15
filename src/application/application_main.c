@@ -28,7 +28,16 @@ static void print_uptime(struct work *work)
     uint32_t uptime_s = uptime / 1000000;
 
     char message[64] = {0};
-    snprintf(message, sizeof(message), "up-time: %6lu.%03lu,%03lu\r\n", uptime_s, uptime_ms, uptime_us);
+
+    snprintf(
+        message,
+        sizeof(message),
+        "up-time: %6u.%03u,%03u\r\n",
+        (unsigned) uptime_s,
+        (unsigned) uptime_ms,
+        (unsigned) uptime_us
+    );
+
     uart_write(peripherals.debug_uart, (const uint8_t *) message, strlen(message));
 
     work_schedule_again(work, 1000);

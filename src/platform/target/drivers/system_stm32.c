@@ -8,13 +8,13 @@ extern TIM_HandleTypeDef htim3;  ///< 16 bit timer for wakeup (10 kHz clock)
 static uint32_t uptime_high32 = 0;
 static uint32_t critical_section_depth = 0;
 
-void system_critical_section_enter()
+void system_critical_section_enter(void)
 {
     __disable_irq();
     critical_section_depth++;
 }
 
-void system_critical_section_exit()
+void system_critical_section_exit(void)
 {
     critical_section_depth--;
 
@@ -23,7 +23,7 @@ void system_critical_section_exit()
     }
 }
 
-u64_us_t system_uptime_get()
+u64_us_t system_uptime_get(void)
 {
     system_critical_section_enter();
 
@@ -65,7 +65,7 @@ bool_t system_schedule_wakeup(u64_us_t timeout)
     return true;
 }
 
-void system_enter_sleep_mode()
+void system_enter_sleep_mode(void)
 {
     HAL_SuspendTick();
     HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
