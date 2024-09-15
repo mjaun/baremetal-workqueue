@@ -3,7 +3,7 @@
 #include <main.h>
 
 extern TIM_HandleTypeDef htim2;  ///< 32 bit uptime counter (1 MHz clock)
-extern TIM_HandleTypeDef htim3;  ///< 16 bit timer for wakeup (1 kHz clock)
+extern TIM_HandleTypeDef htim3;  ///< 16 bit timer for wakeup (10 kHz clock)
 
 static uint32_t uptime_high32 = 0;
 static uint32_t critical_section_depth = 0;
@@ -25,7 +25,7 @@ void system_critical_section_exit()
 
 u64_us_t system_uptime_get()
 {
-    __disable_irq();
+    system_critical_section_enter();
 
     uint32_t high32 = uptime_high32;
     uint32_t low32 = __HAL_TIM_GetCounter(&htim2);
@@ -36,26 +36,26 @@ u64_us_t system_uptime_get()
         low32 = __HAL_TIM_GetCounter(&htim2);
     }
 
-    __enable_irq();
+    system_critical_section_exit();
 
     return ((u64_us_t) high32 << 32) | (u64_us_t) low32;
 }
 
 bool_t system_schedule_wakeup(u64_us_t timeout)
 {
-    u64_ms_t timeout_ms = timeout / 1000;
+    uint64_t timer_period = timeout / 100;
 
-    // timeout needs to be at least 1 ms
-    if (timeout_ms < 1) {
+    // timeout needs to be at least 2 cycles
+    if (timer_period < 2) {
         return false;
     }
 
     // timer is 16 bit, if a larger timeout is requested we schedule wake-up as late as we can
-    if (timeout_ms > 0xFFFF) {
-        timeout_ms = 0xFFFF;
+    if (timer_period > 0x10000) {
+        timer_period = 0x10000;
     }
 
-    __HAL_TIM_SetAutoreload(&htim3, timeout_ms - 1);
+    __HAL_TIM_SetAutoreload(&htim3, timer_period - 1);
     __HAL_TIM_SetCounter(&htim3, 0);
 
     __HAL_TIM_CLEAR_IT(&htim3, TIM_IT_UPDATE);
@@ -67,9 +67,11 @@ bool_t system_schedule_wakeup(u64_us_t timeout)
 
 void system_enter_sleep_mode()
 {
-    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    HAL_SuspendTick();
     HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+    HAL_ResumeTick();
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)

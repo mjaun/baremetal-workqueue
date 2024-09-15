@@ -216,7 +216,7 @@ void sleep_until_ready()
         u64_us_t current_uptime = system_uptime_get();
 
         // don't go to sleep if there is ready work
-        if (current_uptime < scheduled_work->scheduled_uptime) {
+        if (scheduled_work->scheduled_uptime < current_uptime) {
             system_critical_section_exit();
             return;
         }
@@ -230,11 +230,9 @@ void sleep_until_ready()
         }
     }
 
-    system_critical_section_exit();
-
-    // TODO: we have an issue if an interrupt adds more work at exactly this point in time
-
     system_enter_sleep_mode();
+
+    system_critical_section_exit();
 }
 
 /**
