@@ -5,5 +5,7 @@
 void system_critical_section_enter();
 void system_critical_section_exit();
 
-void system_msleep(u32_ms_t timeout);
-u64_ms_t system_uptime_get();
+bool_t system_schedule_wakeup(u64_us_t timeout);
+void system_enter_sleep_mode();
+
+u64_us_t system_uptime_get();

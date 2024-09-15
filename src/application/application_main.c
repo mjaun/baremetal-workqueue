@@ -2,32 +2,34 @@
 #include "services/work.h"
 #include "drivers/gpio.h"
 #include "drivers/uart.h"
+#include "drivers/system.h"
 #include "util/unused.h"
 #include <string.h>
+#include <stdio.h>
 
-static void print_hello_once(struct work *work);
-static void toogle_led_forever(struct work *work);
+static void print_uptime(struct work *work);
 
-static WORK_ITEM_DEFINE(print_hello, 1, print_hello_once);
-static WORK_ITEM_DEFINE(toggle_led, 1, toogle_led_forever);
+static WORK_DEFINE(work_print_hello, 1, print_uptime);
 
 void application_main(void)
 {
-    work_submit(&print_hello);
-    work_submit(&toggle_led);
+    work_submit(&work_print_hello);
     work_run();
 }
 
-static void print_hello_once(struct work *work)
+static void print_uptime(struct work *work)
 {
     ARG_UNUSED(work);
 
-    const char *message = "Hello World!\r\n";
-    uart_write(peripherals.debug_uart, (const uint8_t *) message, strlen(message));
-}
+    u64_us_t uptime = system_uptime_get();
 
-static void toogle_led_forever(struct work *work)
-{
-    gpio_toggle(peripherals.user_led);
-    work_schedule(work, 500);
+    uint32_t uptime_us = uptime % 1000;
+    uint32_t uptime_ms = (uptime / 1000) % 1000;
+    uint32_t uptime_s = uptime / 1000000;
+
+    char message[64] = {0};
+    snprintf(message, sizeof(message), "up-time: %6lu.%03lu,%03lu\r\n", uptime_s, uptime_ms, uptime_us);
+    uart_write(peripherals.debug_uart, (const uint8_t *) message, strlen(message));
+
+    work_schedule_again(work, 1000);
 }

@@ -15,14 +15,16 @@ enum work_flags {
 struct work {
     work_handler_t handler;
     uint32_t priority;
-    u64_ms_t scheduled_uptime;
+    u64_us_t scheduled_uptime;
     uint32_t flags;
     struct work *next;
 };
 
-#define WORK_ITEM_DEFINE(_name, _priority, _handler) \
+#define WORK_DEFINE(_name, _priority, _handler) \
    struct work _name = { .handler = _handler, .priority = _priority }
 
 void work_run();
-void work_submit(struct work *item);
-void work_schedule(struct work *item, uint32_t delay_ms);
+void work_submit(struct work *work);
+void work_schedule_after(struct work *work, u32_ms_t delay);
+void work_schedule_again(struct work *work, u32_ms_t delay);
+void work_schedule_cancel(struct work *work);
