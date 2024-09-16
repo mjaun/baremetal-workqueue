@@ -8,9 +8,11 @@ app_include_directories(
 
 app_compile_definitions(STM32F411xE)
 
-app_linker_script(stm32cube/STM32F411RETX_FLASH.ld)
+get_filename_component(LINKER_SCRIPT stm32cube/STM32F411RETX_FLASH.ld ABSOLUTE)
+target_link_options(app PRIVATE -T ${LINKER_SCRIPT})
+set_property(TARGET app APPEND PROPERTY LINK_DEPENDS ${LINKER_SCRIPT})
 
-app_link_options(
+target_link_options(app PRIVATE
     --specs=nano.specs
     -Wl,-Map=${CMAKE_PROJECT_NAME}.map
     -Wl,--gc-sections
@@ -30,7 +32,8 @@ app_sources(
     stm32cube/Core/Startup/startup_stm32f411retx.s
 )
 
-app_source_compile_options(
+set_property(
     SOURCE stm32cube/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c
-    COMPILE_OPTIONS -Wno-unused-parameter
+    DIRECTORY ${CMAKE_SOURCE_DIR}
+    APPEND PROPERTY COMPILE_OPTIONS -Wno-unused-parameter
 )

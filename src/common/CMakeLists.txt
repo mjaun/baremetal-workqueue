@@ -6,3 +6,12 @@ app_sources(
     application/button_handler.c
     service/work.c
 )
+
+set(TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/unit_test)
+
+test_define(uptime_printer)
+
+test_sources(
+    application/uptime_printer.c
+    ${TEST_SOURCE_DIR}/application/test_uptime_printer.cpp
+)
