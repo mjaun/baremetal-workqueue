@@ -1,9 +1,8 @@
-#include "CppUTest/TestHarness.h"
-#include "CppUTestExt/MockSupport.h"
 #include "application/peripherals.h"
 #include "application/uptime_printer.h"
 #include "service/work_ext.h"
 #include "service/system.h"
+#include "service/unit_test.h"
 #include <string>
 #include <sstream>
 #include <iomanip>

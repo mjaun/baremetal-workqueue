@@ -1,4 +1,4 @@
-#include "CppUTestExt/MockSupport.h"
+#include "service/unit_test.h"
 #include "driver/uart.h"
 
 extern "C" void uart_write(struct uart* uart, const uint8_t* data, size_t length)
