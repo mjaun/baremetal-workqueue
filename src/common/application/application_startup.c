@@ -1,3 +1,4 @@
+#include "application/application_startup.h"
 #include "application/button_handler.h"
 #include "application/uptime_printer.h"
 

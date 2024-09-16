@@ -1,11 +1,9 @@
-#include "service/system.h"
+#include "service/system_sim.h"
 #include "util/unused.h"
 #include <unistd.h>
 #include <time.h>
 
 #define TICK_DURATION_US    1000
-
-extern void application_main(void);
 
 static u64_us_t uptime_counter;
 static i64_us_t uptime_target_delta;
@@ -68,13 +66,7 @@ static u64_us_t clock_raw_get(void)
     return (ts.tv_nsec / 1000ULL) + (ts.tv_sec * 1000000ULL);
 }
 
-int main(int argc, char *argv[])
+void system_init(void)
 {
-    ARG_UNUSED(argc);
-    ARG_UNUSED(argv);
-
     uptime_target_delta = (i64_us_t) clock_raw_get();
-
-    application_main();
-    return 0;
 }

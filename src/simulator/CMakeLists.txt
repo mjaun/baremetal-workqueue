@@ -5,4 +5,5 @@ app_sources(
     driver/uart_sim.c
     driver/gpio_sim.c
     service/system_sim.c
+    main.c
 )

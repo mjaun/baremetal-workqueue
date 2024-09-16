@@ -18,8 +18,10 @@ target_include_directories(test_lib PUBLIC
 target_sources(test_lib PRIVATE
     application/peripherals_fake.c
     driver/uart_mock.cpp
-    service/system_fake.cpp
+    service/system_fake.c
     service/work_ext.c
+    main.cpp
+
     ${CMAKE_SOURCE_DIR}/src/common/service/work.c
 )
 
