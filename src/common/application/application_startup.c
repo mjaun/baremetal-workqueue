@@ -1,5 +1,5 @@
-extern void button_handler_init(void);
-extern void uptime_printer_init(void);
+#include "application/button_handler.h"
+#include "application/uptime_printer.h"
 
 void application_main(void)
 {

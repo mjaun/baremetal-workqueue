@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct gpio_pin;
 struct uart;
 
@@ -16,3 +20,7 @@ struct peripherals {
  * Struct containing handles for all peripherals accessed by the application.
  */
 extern const struct peripherals peripherals;
+
+#ifdef __cplusplus
+}
+#endif

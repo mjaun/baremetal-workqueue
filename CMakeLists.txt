@@ -9,8 +9,8 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 
 include(cmake/extensions.cmake)
 
-add_executable(app)
-
-app_include_directories(include)
+if(NOT BUILD_TARGET STREQUAL "unit_test")
+    add_executable(app)
+endif()
 
 add_subdirectory(src)

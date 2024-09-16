@@ -8,10 +8,10 @@
             "binaryDir": "${sourceDir}/build/${presetName}"
         },
         {
-            "name": "target",
+            "name": "firmware",
             "inherits": "default",
             "cacheVariables": {
-                "TARGET_BUILD": "ON",
+                "BUILD_TARGET": "firmware",
                 "CMAKE_BUILD_TYPE": "Debug"
             },
             "environment": {
@@ -23,7 +23,15 @@
             "name": "simulator",
             "inherits": "default",
             "cacheVariables": {
-                "SIMULATOR_BUILD": "ON",
+                "BUILD_TARGET": "simulator",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "unit_test",
+            "inherits": "default",
+            "cacheVariables": {
+                "BUILD_TARGET": "unit_test",
                 "CMAKE_BUILD_TYPE": "Debug"
             }
         }

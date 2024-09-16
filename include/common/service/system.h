@@ -2,6 +2,10 @@
 
 #include "util/types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Globally disables interrupts.
  *
@@ -56,3 +60,7 @@ void system_enter_sleep_mode();
  * @return System up-time in microseconds.
  */
 u64_us_t system_uptime_get();
+
+#ifdef __cplusplus
+}
+#endif

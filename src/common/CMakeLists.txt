@@ -4,5 +4,5 @@ app_sources(
     application/application_startup.c
     application/uptime_printer.c
     application/button_handler.c
-    service/work/work.c
+    service/work.c
 )

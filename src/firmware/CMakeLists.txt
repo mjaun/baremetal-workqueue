@@ -1,5 +1,5 @@
 app_include_directories(
-    ${CMAKE_SOURCE_DIR}/include/target
+    ${CMAKE_SOURCE_DIR}/include/firmware
     stm32cube/Drivers/CMSIS/Include
     stm32cube/Drivers/CMSIS/Device/ST/STM32F4xx/Include
     stm32cube/Drivers/STM32F4xx_HAL_Driver/Inc
@@ -24,7 +24,7 @@ app_sources(
     driver/uart_stm32.c
     driver/gpio_stm32.c
     service/system_stm32.c
-    application/peripherals.c
+    application/peripherals_stm32.c
     ${core_sources}
     ${hal_sources}
     stm32cube/Core/Startup/startup_stm32f411retx.s

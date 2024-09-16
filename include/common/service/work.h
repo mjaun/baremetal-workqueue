@@ -2,6 +2,10 @@
 
 #include "util/types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct work;
 
 typedef void (*work_handler_t)(struct work *work);
@@ -33,12 +37,17 @@ struct work {
 /**
  * Enters a loop to execute work items.
  *
- * This function does not return.
- *
  * This might be optimized by going to a low power mode until the next scheduled work
  * item is ready or another item is submitted via ISR.
  */
-void work_run();
+void work_run(void);
+
+/**
+ * Quits the work loop after processing the current work item.
+ *
+ * This function is supposed to be used for unit testing purposes only.
+ */
+void work_exit_request(void);
 
 /**
  * Submits an item for execution.
@@ -107,3 +116,7 @@ void work_schedule_at(struct work *work, u64_us_t uptime);
  * @param work Item to cancel.
  */
 void work_cancel(struct work *work);
+
+#ifdef __cplusplus
+}
+#endif

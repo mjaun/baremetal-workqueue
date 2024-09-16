@@ -1,6 +1,7 @@
-#include "service/work.h"
-#include "service/system.h"
+#include "../../../include/common/service/work.h"
+#include "../../../include/common/service/system.h"
 
+static bool_t work_exit_requested = false;
 static struct work *submitted_queue = NULL;
 static struct work *scheduled_queue = NULL;
 
@@ -16,13 +17,20 @@ static void set_flags(struct work *work, uint32_t flags);
 static void clear_flags(struct work *work, uint32_t flags);
 static bool_t test_flags_any(struct work *work, uint32_t flags);
 
-void work_run()
+void work_run(void)
 {
-    while (true) {
+    work_exit_requested = false;
+
+    while (!work_exit_requested) {
+        sleep_until_ready();
         submit_ready_work();
         process_next_work();
-        sleep_until_ready();
     }
+}
+
+void work_exit_request(void)
+{
+    work_exit_requested = true;
 }
 
 void work_submit(struct work *work)
@@ -120,27 +128,28 @@ void process_next_work()
 
     struct work *work = submitted_queue;
 
-    if (work != NULL) {
-        submitted_queue = work->next;
-
-        clear_flags(work, WORK_ITEM_SUBMITTED);
-        set_flags(work, WORK_ITEM_RUNNING);
-        work->next = NULL;
+    if (work == NULL) {
+        system_critical_section_exit();
+        return;
     }
+
+    submitted_queue = work->next;
+
+    clear_flags(work, WORK_ITEM_SUBMITTED);
+    set_flags(work, WORK_ITEM_RUNNING);
+    work->next = NULL;
 
     system_critical_section_exit();
 
     // process item
-    if (work != NULL) {
-        work->handler(work);
-    }
+    work->handler(work);
 
     // update state
-    if (work != NULL) {
-        system_critical_section_enter();
-        clear_flags(work, WORK_ITEM_RUNNING);
-        system_critical_section_exit();
-    }
+    system_critical_section_enter();
+
+    clear_flags(work, WORK_ITEM_RUNNING);
+
+    system_critical_section_exit();
 }
 
 /**
@@ -229,7 +238,7 @@ void schedule_add_locked(struct work *work, uint64_t scheduled_uptime)
 
     // find correct position to insert
     while (next != NULL) {
-        if (next->scheduled_uptime > work->scheduled_uptime) {
+        if (next->scheduled_uptime > scheduled_uptime) {
             break;
         }
 
