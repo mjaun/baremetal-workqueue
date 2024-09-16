@@ -1,8 +1,8 @@
 #include "services/work.h"
 #include "drivers/system.h"
 
-static struct work *submitted_work = NULL;
-static struct work *scheduled_work = NULL;
+static struct work *submitted_queue = NULL;
+static struct work *scheduled_queue = NULL;
 
 static void process_next_work();
 static void submit_ready_work();
@@ -10,7 +10,7 @@ static void sleep_until_ready();
 
 static void submit_add_locked(struct work *work);
 static void schedule_add_locked(struct work *work, uint64_t scheduled_uptime);
-static void schedule_remove_locked(struct work *work);
+static void remove_locked(struct work **queue, struct work *work, uint32_t flags_to_clear);
 
 static void set_flags(struct work *work, uint32_t flags);
 static void clear_flags(struct work *work, uint32_t flags);
@@ -37,7 +37,7 @@ void work_submit(struct work *work)
 
     // if item is scheduled, remove from schedule queue
     if (test_flags_any(work, WORK_ITEM_SCHEDULED)) {
-        schedule_remove_locked(work);
+        remove_locked(&scheduled_queue, work, WORK_ITEM_SCHEDULED);
     }
 
     submit_add_locked(work);
@@ -66,12 +66,16 @@ void work_schedule_at(struct work *work, u64_us_t uptime)
     system_critical_section_exit();
 }
 
-void work_schedule_cancel(struct work *work)
+void work_cancel(struct work *work)
 {
     system_critical_section_enter();
 
     if (!test_flags_any(work, WORK_ITEM_SCHEDULED)) {
-        schedule_remove_locked(work);
+        remove_locked(&scheduled_queue, work, WORK_ITEM_SCHEDULED);
+    }
+
+    if (!test_flags_any(work, WORK_ITEM_SUBMITTED)) {
+        remove_locked(&submitted_queue, work, WORK_ITEM_SUBMITTED);
     }
 
     system_critical_section_exit();
@@ -86,7 +90,7 @@ void submit_ready_work()
 
     system_critical_section_enter();
 
-    struct work *work = scheduled_work;
+    struct work *work = scheduled_queue;
 
     // submit items
     while ((work != NULL) && (work->scheduled_uptime <= current_uptime)) {
@@ -101,7 +105,7 @@ void submit_ready_work()
     }
 
     // update queue head
-    scheduled_work = work;
+    scheduled_queue = work;
 
     system_critical_section_exit();
 }
@@ -114,10 +118,10 @@ void process_next_work()
     // remove first item from queue and update state
     system_critical_section_enter();
 
-    struct work *work = submitted_work;
+    struct work *work = submitted_queue;
 
     if (work != NULL) {
-        submitted_work = work->next;
+        submitted_queue = work->next;
 
         clear_flags(work, WORK_ITEM_SUBMITTED);
         set_flags(work, WORK_ITEM_RUNNING);
@@ -147,21 +151,21 @@ void sleep_until_ready()
     system_critical_section_enter();
 
     // don't go to sleep if there is still submitted work
-    if (submitted_work != NULL) {
+    if (submitted_queue != NULL) {
         system_critical_section_exit();
         return;
     }
 
-    if (scheduled_work != NULL) {
+    if (scheduled_queue != NULL) {
         u64_us_t current_uptime = system_uptime_get();
 
         // don't go to sleep if there is ready work
-        if (scheduled_work->scheduled_uptime < current_uptime) {
+        if (scheduled_queue->scheduled_uptime < current_uptime) {
             system_critical_section_exit();
             return;
         }
 
-        u64_us_t wakeup_timeout = scheduled_work->scheduled_uptime - current_uptime;
+        u64_us_t wakeup_timeout = scheduled_queue->scheduled_uptime - current_uptime;
 
         // don't go to sleep if wake-up cannot be scheduled (timeout too short)
         if (!system_schedule_wakeup(wakeup_timeout)) {
@@ -186,7 +190,7 @@ void sleep_until_ready()
 void submit_add_locked(struct work *work)
 {
     struct work *previous = NULL;
-    struct work *next = submitted_work;
+    struct work *next = submitted_queue;
 
     // find correct position
     while (next != NULL) {
@@ -202,7 +206,7 @@ void submit_add_locked(struct work *work)
     if (previous != NULL) {
         previous->next = work;
     } else {
-        submitted_work = work;
+        submitted_queue = work;
     }
 
     set_flags(work, WORK_ITEM_SUBMITTED);
@@ -221,7 +225,7 @@ void submit_add_locked(struct work *work)
 void schedule_add_locked(struct work *work, uint64_t scheduled_uptime)
 {
     struct work *previous = NULL;
-    struct work *next = scheduled_work;
+    struct work *next = scheduled_queue;
 
     // find correct position to insert
     while (next != NULL) {
@@ -237,7 +241,7 @@ void schedule_add_locked(struct work *work, uint64_t scheduled_uptime)
     if (previous != NULL) {
         previous->next = work;
     } else {
-        scheduled_work = work;
+        scheduled_queue = work;
     }
 
     set_flags(work, WORK_ITEM_SCHEDULED);
@@ -250,12 +254,14 @@ void schedule_add_locked(struct work *work, uint64_t scheduled_uptime)
  *
  * Interrupts must be locked.
  *
- * @param work Item to remove.
+ * @param queue Queue to remove the item from.
+ * @param work Work item to remove.
+ * @param flags_to_clear Flags to clear on the work item if removed.
  */
-void schedule_remove_locked(struct work *work)
+void remove_locked(struct work **queue, struct work *work, uint32_t flags_to_clear)
 {
     struct work *previous = NULL;
-    struct work *next = scheduled_work;
+    struct work *next = *queue;
 
     // find work item
     while ((next != NULL) && (next != work)) {
@@ -268,10 +274,10 @@ void schedule_remove_locked(struct work *work)
         if (previous != NULL) {
             previous->next = work->next;
         } else {
-            scheduled_work = work->next;
+            *queue = work->next;
         }
 
-        clear_flags(work, WORK_ITEM_SCHEDULED);
+        clear_flags(work, flags_to_clear);
         work->next = NULL;
     }
 }

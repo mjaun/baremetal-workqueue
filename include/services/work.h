@@ -93,17 +93,17 @@ void work_schedule_again(struct work *work, u32_ms_t delay);
  * This function is safe to be called from ISRs.
  *
  * @param work Item to schedule.
- * @param delay Delay in milliseconds.
+ * @param uptime Delay in milliseconds.
  */
 void work_schedule_at(struct work *work, u64_us_t uptime);
 
 /**
- * Removes an item from the scheduled queue.
+ * Removes an item from the submitted or scheduled queue.
  *
- * If the item is not scheduled or already submitted, this function does nothing.
+ * If the item is not scheduled or submitted, this function does nothing.
  *
  * This function is safe to be called from ISRs.
  *
- * @param work Item to remove from schedule.
+ * @param work Item to cancel.
  */
-void work_schedule_cancel(struct work *work);
+void work_cancel(struct work *work);
