@@ -5,16 +5,22 @@
 
 extern UART_HandleTypeDef huart2;
 
-static const struct gpio_pin gpio_pin_user_led = {
+static struct gpio_pin gpio_pin_user_led = {
     .port = LD2_GPIO_Port,
     .pin = LD2_Pin,
 };
 
-static const struct uart uart_debug = {
+static struct gpio_pin gpio_pin_user_button = {
+    .port = B1_GPIO_Port,
+    .pin = B1_Pin,
+};
+
+static struct uart uart_debug = {
     .huart = &huart2,
 };
 
 const struct peripherals peripherals = {
-    .user_led = (gpio_pin_handle_t) &gpio_pin_user_led,
-    .debug_uart = (uart_handle_t) &uart_debug,
+    .user_led = &gpio_pin_user_led,
+    .user_button = &gpio_pin_user_button,
+    .debug_uart = &uart_debug,
 };

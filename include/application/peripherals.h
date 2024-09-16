@@ -8,6 +8,7 @@ struct uart;
  */
 struct peripherals {
     struct gpio_pin* user_led;
+    struct gpio_pin* user_button;
     struct uart* debug_uart;
 };
 

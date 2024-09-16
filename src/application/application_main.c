@@ -7,14 +7,35 @@
 #include <string.h>
 #include <stdio.h>
 
-static void print_uptime(struct work *work);
+static void exti_handler(struct gpio_pin *pin);
 
-static WORK_DEFINE(work_print_hello, 1, print_uptime);
+static void print_uptime(struct work *work);
+static void print_button_pressed(struct work *work);
+
+static WORK_DEFINE(work_uptime, 1, print_uptime);
+static WORK_DEFINE(work_button_pressed, 1, print_button_pressed);
 
 void application_main(void)
 {
-    work_submit(&work_print_hello);
+    gpio_exti_callback(peripherals.user_button, exti_handler);
+
+    work_submit(&work_uptime);
     work_run();
+}
+
+static void exti_handler(struct gpio_pin *pin)
+{
+    ARG_UNUSED(pin);
+
+    work_submit(&work_button_pressed);
+}
+
+static void print_button_pressed(struct work *work)
+{
+    ARG_UNUSED(work);
+
+    const char* message = "button pressed!\r\n";
+    uart_write(peripherals.debug_uart, (const uint8_t*) message, strlen(message));
 }
 
 static void print_uptime(struct work *work)
