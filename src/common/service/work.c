@@ -1,5 +1,5 @@
-#include "../../../include/common/service/work.h"
-#include "../../../include/common/service/system.h"
+#include "service/work.h"
+#include "service/system.h"
 
 static bool_t work_exit_requested = false;
 static struct work *submitted_queue = NULL;
