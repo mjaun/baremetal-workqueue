@@ -1,4 +1,5 @@
 #include "service/system.h"
+#include "util/unused.h"
 
 static u64_us_t uptime_counter;
 static u64_us_t scheduled_wakeup;
@@ -33,4 +34,10 @@ void system_enter_sleep_mode(void)
 u64_us_t system_uptime_get(void)
 {
     return uptime_counter;
+}
+
+void system_debug_out(char c)
+{
+    // do nothing
+    ARG_UNUSED(c);
 }

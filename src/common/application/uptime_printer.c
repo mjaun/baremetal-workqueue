@@ -1,10 +1,7 @@
-#include "application/peripherals.h"
-#include "driver/uart.h"
 #include "service/work.h"
-#include "service/system.h"
-#include "util/unused.h"
-#include <string.h>
-#include <stdio.h>
+#include "service/log.h"
+
+LOG_MODULE_REGISTER(uptime_printer);
 
 static void print_uptime(struct work *work);
 
@@ -17,26 +14,6 @@ void uptime_printer_init(void)
 
 static void print_uptime(struct work *work)
 {
-    ARG_UNUSED(work);
-
-    u64_us_t uptime = system_uptime_get();
-
-    uint32_t uptime_us = uptime % 1000;
-    uint32_t uptime_ms = (uptime / 1000) % 1000;
-    uint32_t uptime_s = uptime / 1000000;
-
-    char message[64] = {0};
-
-    snprintf(
-        message,
-        sizeof(message),
-        "up-time: %6u.%03u,%03u\r\n",
-        (unsigned) uptime_s,
-        (unsigned) uptime_ms,
-        (unsigned) uptime_us
-    );
-
-    uart_write(peripherals.debug_uart, (const uint8_t *) message, strlen(message));
-
+    LOG_INF("print uptime");
     work_schedule_again(work, 1000);
 }

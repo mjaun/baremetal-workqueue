@@ -61,6 +61,11 @@ void system_enter_sleep_mode();
  */
 u64_us_t system_uptime_get();
 
+/**
+ * Output a character on debug interface.
+ */
+void system_debug_out(char c);
+
 #ifdef __cplusplus
 }
 #endif

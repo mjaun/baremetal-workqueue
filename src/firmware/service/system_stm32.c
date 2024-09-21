@@ -5,6 +5,8 @@
 extern TIM_HandleTypeDef htim2;  ///< 32 bit uptime counter (1 MHz clock)
 extern TIM_HandleTypeDef htim3;  ///< 16 bit timer for wakeup (10 kHz clock)
 
+extern UART_HandleTypeDef huart2;
+
 static uint32_t uptime_high32 = 0;
 static uint32_t critical_section_depth = 0;
 
@@ -72,6 +74,11 @@ void system_enter_sleep_mode(void)
     HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
     HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
     HAL_ResumeTick();
+}
+
+void system_debug_out(char c)
+{
+    HAL_UART_Transmit(&huart2, (const uint8_t*) &c, 1, HAL_MAX_DELAY);
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)

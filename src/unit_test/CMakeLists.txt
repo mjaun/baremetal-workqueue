@@ -23,6 +23,7 @@ target_sources(test_lib PRIVATE
     main.cpp
 
     ${CMAKE_SOURCE_DIR}/src/common/service/work.c
+    ${CMAKE_SOURCE_DIR}/src/common/service/log.c
 )
 
 target_link_libraries(test_lib PUBLIC CppUTest::CppUTest CppUTest::CppUTestExt)

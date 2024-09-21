@@ -1,12 +1,12 @@
 #include "service/system_sim.h"
 #include <unistd.h>
 #include <time.h>
+#include <stdio.h>
 
 static i64_us_t uptime_delta;
 static u64_us_t scheduled_wakeup;
 
 static u64_us_t clock_raw_get(void);
-static i64_us_t clock_current_delta_get(void);
 
 void system_critical_section_enter(void)
 {
@@ -43,6 +43,11 @@ void system_enter_sleep_mode(void)
 u64_us_t system_uptime_get(void)
 {
     return clock_raw_get() - uptime_delta;
+}
+
+void system_debug_out(char c)
+{
+    putchar(c);
 }
 
 static u64_us_t clock_raw_get(void)
