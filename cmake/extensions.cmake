@@ -1,5 +1,6 @@
 function(enable_app_build)
     add_executable(app)
+    set_property(TARGET app PROPERTY OUTPUT_NAME ${CMAKE_PROJECT_NAME})
     set_property(GLOBAL PROPERTY BUILD_APP ON)
 endfunction()
 

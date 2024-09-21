@@ -8,6 +8,7 @@ if(BUILD_TARGET STREQUAL "unit_test")
 endif()
 
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_EXECUTABLE_SUFFIX ".elf")
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
