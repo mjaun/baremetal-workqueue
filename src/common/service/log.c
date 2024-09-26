@@ -1,24 +1,42 @@
 #include "service/log.h"
 #include "service/system.h"
+#include "service/print.h"
+#include "service/work.h"
 #include <string.h>
 #include <stdarg.h>
-#include <stdio.h>
 
-#define DIGITS_BUFFER_SIZE   32
+#define LOG_BUFFER_SIZE          1024
+#define LOG_MAX_MSG_DATA_SIZE    64
 
-static struct log_module *log_modules;
+struct log_buffer {
+    uint8_t data[LOG_BUFFER_SIZE];
+    size_t head;
+    size_t tail;
+    uint32_t dropped;
+};
 
-static void log_printf(const char *format, ...);
-static void log_vprintf(const char *format, va_list ap);
-static void print_value_signed(int64_t value, uint8_t base);
-static void print_value_unsigned(uint64_t value, uint8_t base);
-static void print_value_string(const char *str);
-static void reverse_string(char *str, int len);
+struct log_message_header {
+    const struct log_module *module;
+    u64_us_t timestamp;
+    uint8_t level;
+} __attribute__((packed));
+
+static void log_output(struct work *work);
+
+static void ring_buffer_put(const void *data, size_t length);
+static size_t ring_buffer_get(void *data);
+static uint32_t ring_buffer_read_dropped();
+
 static const char *log_level_str(enum log_level level);
+
+static struct log_module *modules;
+static struct log_buffer ring_buffer;
+
+WORK_DEFINE(log_output_work, 10, log_output);
 
 void log_set_level(const char *module_name, enum log_level level)
 {
-    struct log_module *module = log_modules;
+    struct log_module *module = modules;
 
     // find module
     while ((module != NULL) && (strcmp(module->name, module_name) != 0)) {
@@ -38,202 +56,164 @@ void __log_message(const struct log_module *module, enum log_level level, const 
         return;
     }
 
-    u64_us_t timestamp = system_uptime_get();
+    struct log_message_header header = {
+        .timestamp = system_uptime_get(),
+        .level = (uint8_t) level,
+        .module = module,
+    };
 
-    log_printf(
-        "[%u] <%s> %s: ",
-        (unsigned) (timestamp / 1000),
-        log_level_str(level),
-        module->name
-    );
+    uint8_t buffer[LOG_MAX_MSG_DATA_SIZE];
+    memcpy(buffer, &header, sizeof(header));
 
-    /*
-    uint32_t timestamp_s = timestamp / 1000000ULL;
-    uint32_t timestamp_us = timestamp % 1000000ULL;
+    va_list ap;
+    va_start(ap, format);
 
-    log_printf(
+    size_t package_size = print_capture(buffer + sizeof(header), sizeof(buffer) - sizeof(header), format, ap);
+    ring_buffer_put(buffer, package_size + sizeof(header));
+    work_submit(&log_output_work);
+
+    va_end(ap);
+}
+
+void __log_module_register(struct log_module *module)
+{
+    module->next = modules;
+    modules = module;
+}
+
+static void log_output(struct work *work)
+{
+    // print number of dropped messages if any
+    uint32_t dropped = ring_buffer_read_dropped();
+
+    if (dropped > 0) {
+        print_format(system_debug_out, "<%u messages dropped>\r\n", (unsigned) dropped);
+    }
+
+    // process one log message
+    uint8_t buffer[LOG_MAX_MSG_DATA_SIZE];
+    size_t length = ring_buffer_get(buffer);
+
+    if (length < sizeof(struct log_message_header)) {
+        // length should always be zero here
+        return;
+    }
+
+    struct log_message_header header;
+    memcpy(&header, buffer, sizeof(header));
+
+    uint32_t timestamp_s = header.timestamp / 1000000ULL;
+    uint32_t timestamp_us = header.timestamp % 1000000ULL;
+
+    print_format(
+        system_debug_out,
         "[%02u:%02u:%02u.%03u,%03u] <%s> %s: ",
         (unsigned) (timestamp_s / 3600),
         (unsigned) (timestamp_s / 60 % 60),
         (unsigned) (timestamp_s % 60),
         (unsigned) (timestamp_us / 1000),
         (unsigned) (timestamp_us % 1000),
-        log_level_str(level),
-        module->name
+        log_level_str((enum log_level) header.level),
+        header.module->name
     );
-    */
 
-    va_list ap;
-    va_start(ap, format);
-    log_vprintf(format, ap);
-    va_end(ap);
+    print_output(
+        system_debug_out,
+        buffer + sizeof(header),
+        length - sizeof(header)
+    );
 
-    system_debug_out('\r');
-    system_debug_out('\n');
+    print_format(
+        system_debug_out,
+        "\r\n"
+    );
+
+    // resubmit work until there are no more log messages
+    work_submit(work);
 }
 
-void __log_module_register(struct log_module *module)
+static void ring_buffer_put(const void *data, size_t length)
 {
-    module->next = log_modules;
-    log_modules = module;
-}
+    system_critical_section_enter();
 
-void log_printf(const char *format, ...)
-{
-    va_list ap;
-    va_start(ap, format);
-    log_vprintf(format, ap);
-    va_end(ap);
-}
-
-void log_vprintf(const char *format, va_list ap)
-{
-    int parse_idx = 0;
-    int fspec_idx = -1;
-
-    while (true) {
-        char c = format[parse_idx];
-
-        if (c == '\0') {
-            // in any case, if we reach the NULL terminator, we quit
-            break;
-        }
-
-        if (fspec_idx < 0) {
-            // we are currently not parsing a format specifier, check for
-            // a format specifier, otherwise just print the character
-            if (c == '%') {
-                fspec_idx = parse_idx;
-            } else {
-                system_debug_out(c);
-            }
-        } else {
-            // we are currently parsing a format specifier
-            switch (c) {
-                case 'd':
-                case 'i': {
-                    int value = va_arg(ap, int);
-                    print_value_signed(value, 10);
-                    fspec_idx = -1;
-                    break;
-                }
-                case 'u': {
-                    unsigned value = va_arg(ap, unsigned);
-                    print_value_unsigned(value, 10);
-                    fspec_idx = -1;
-                    break;
-                }
-                case 'o': {
-                    unsigned value = va_arg(ap, unsigned);
-                    print_value_unsigned(value, 8);
-                    fspec_idx = -1;
-                    break;
-                }
-                case 'x': {
-                    unsigned value = va_arg(ap, unsigned);
-                    print_value_unsigned(value, 16);
-                    fspec_idx = -1;
-                    break;
-                }
-                case 'p': {
-                    uintptr_t value = (uintptr_t) va_arg(ap, const void *);
-                    print_value_unsigned(value, 16);
-                    fspec_idx = -1;
-                    break;
-                }
-                case 'c': {
-                    char value = (char) va_arg(ap, int);
-                    system_debug_out(value);
-                    fspec_idx = -1;
-                    break;
-                }
-                case 's': {
-                    const char *value = va_arg(ap, const char *);
-                    print_value_string(value);
-                    fspec_idx = -1;
-                    break;
-                }
-                case '%': {
-                    system_debug_out('%');
-                    fspec_idx = -1;
-                    break;
-                }
-                default: {
-                    // unsupported format specifier, print as is
-                    for (int i = fspec_idx; i <= parse_idx; i++) {
-                        system_debug_out(format[i]);
-                    }
-                    fspec_idx = -1;
-                    break;
-                }
-            }
-        }
-
-        parse_idx++;
-    }
-}
-
-static void print_value_signed(int64_t value, uint8_t base)
-{
-    if (value < 0) {
-        system_debug_out('-');
-        print_value_unsigned((uint64_t) -value, base);
-    } else {
-        print_value_unsigned((uint64_t) value, base);
-    }
-}
-
-static void print_value_unsigned(uint64_t value, uint8_t base)
-{
-    if (value == 0) {
-        system_debug_out('0');
+    // check for illegal data size
+    if (length > LOG_MAX_MSG_DATA_SIZE) {
+        ring_buffer.dropped++;
+        system_critical_section_exit();
         return;
     }
 
-    char buf[DIGITS_BUFFER_SIZE];
-    int idx = 0;
+    // check if enough space is left
+    size_t buffer_free = 0;
 
-    while (value > 0) {
-        uint8_t c = (uint8_t) (value % base);
+    if (ring_buffer.tail > ring_buffer.head) {
+        buffer_free = ring_buffer.tail - ring_buffer.head;
+    } else {
+        buffer_free = LOG_BUFFER_SIZE - (ring_buffer.head - ring_buffer.tail);
+    }
 
-        if (c >= 10) {
-            c = (uint8_t) 'a' + c - 10;
-        } else {
-            c = (uint8_t) '0' + c;
+    // 1 extra byte for data size and keep always 1 byte free to not
+    // have an ambiguous situation if head == tail
+    if (length + 2 > buffer_free) {
+        ring_buffer.dropped++;
+        system_critical_section_exit();
+        return;
+    }
+
+    // write data size byte
+    ring_buffer.data[ring_buffer.head] = (uint8_t) length;
+    ring_buffer.head = (ring_buffer.head + 1) % LOG_BUFFER_SIZE;
+
+    // write data bytes
+    for (size_t i = 0; i < length; i++) {
+        ring_buffer.data[ring_buffer.head] = ((const uint8_t *) data)[i];
+        ring_buffer.head = (ring_buffer.head + 1) % LOG_BUFFER_SIZE;
+    }
+
+    system_critical_section_exit();
+}
+
+static size_t ring_buffer_get(void *data)
+{
+    system_critical_section_enter();
+
+    // check if data is available
+    if (ring_buffer.head == ring_buffer.tail) {
+        system_critical_section_exit();
+        return 0;
+    }
+
+    // read data size byte
+    uint8_t length = ring_buffer.data[ring_buffer.tail];
+    ring_buffer.tail = (ring_buffer.tail + 1) % LOG_BUFFER_SIZE;
+
+    // read data bytes
+    for (size_t i = 0; i < length; i++) {
+        if (ring_buffer.head == ring_buffer.tail) {
+            // this should not happen, but in any case we abort to not return garbage data
+            system_critical_section_exit();
+            return 0;
         }
 
-        buf[idx] = (char) c;
-        idx++;
-
-        value /= base;
+        ((uint8_t *) data)[i] = ring_buffer.data[ring_buffer.tail];
+        ring_buffer.tail = (ring_buffer.tail + 1) % LOG_BUFFER_SIZE;
     }
 
-    buf[idx] = '\0';
+    system_critical_section_exit();
 
-    reverse_string(buf, idx);
-    print_value_string(buf);
+    return length;
 }
 
-void print_value_string(const char *str)
+static uint32_t ring_buffer_read_dropped()
 {
-    for (int i = 0; str[i] != '\0'; i++) {
-        system_debug_out(str[i]);
-    }
-}
+    system_critical_section_enter();
 
-static void reverse_string(char *str, int len)
-{
-    int start = 0;
-    int end = len - 1;
+    uint32_t ret = ring_buffer.dropped;
+    ring_buffer.dropped = 0;
 
-    while (start < end) {
-        char temp = str[start];
-        str[start] = str[end];
-        str[end] = temp;
+    system_critical_section_exit();
 
-        start++;
-        end--;
-    }
+    return ret;
 }
 
 static const char *log_level_str(enum log_level level)
