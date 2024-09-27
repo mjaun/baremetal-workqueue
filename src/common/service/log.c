@@ -1,12 +1,14 @@
 #include "service/log.h"
 #include "service/system.h"
-#include "service/print.h"
+#include "service/cbprintf.h"
 #include "service/work.h"
 #include <string.h>
 #include <stdarg.h>
 
 #define LOG_BUFFER_SIZE          1024
+#define LOG_WORK_PRIORITY        10
 #define LOG_MAX_MSG_DATA_SIZE    64
+#define LOG_NEWLINE              "\r\n"
 
 struct log_buffer {
     uint8_t data[LOG_BUFFER_SIZE];
@@ -15,13 +17,19 @@ struct log_buffer {
     uint32_t dropped;
 };
 
+/**
+ * Header of a log message.
+ *
+ * For each log message a header struct followed by the captured format string (see `cbprintf_capture`)
+ * is put into the logging ring buffer. The size of both together must not exceed `LOG_MAX_MSG_DATA_SIZE`.
+ */
 struct log_message_header {
-    const struct log_module *module;
-    u64_us_t timestamp;
-    uint8_t level;
+    const struct log_module *module; ///< Module which created this log message.
+    u64_us_t timestamp; ///< Timestamp when the log message was created.
+    uint8_t level; ///< Log level of this message.
 } __attribute__((packed));
 
-static void log_output(struct work *work);
+static void log_output_handler(struct work *work);
 
 static void ring_buffer_put(const void *data, size_t length);
 static size_t ring_buffer_get(void *data);
@@ -32,7 +40,7 @@ static const char *log_level_str(enum log_level level);
 static struct log_module *modules;
 static struct log_buffer ring_buffer;
 
-WORK_DEFINE(log_output_work, 10, log_output);
+WORK_DEFINE(log_output, LOG_WORK_PRIORITY, log_output_handler);
 
 void log_set_level(const char *module_name, enum log_level level)
 {
@@ -68,9 +76,9 @@ void __log_message(const struct log_module *module, enum log_level level, const 
     va_list ap;
     va_start(ap, format);
 
-    size_t package_size = print_capture(buffer + sizeof(header), sizeof(buffer) - sizeof(header), format, ap);
+    size_t package_size = cbvprintf_capture(buffer + sizeof(header), sizeof(buffer) - sizeof(header), format, ap);
     ring_buffer_put(buffer, package_size + sizeof(header));
-    work_submit(&log_output_work);
+    work_submit(&log_output);
 
     va_end(ap);
 }
@@ -81,13 +89,19 @@ void __log_module_register(struct log_module *module)
     modules = module;
 }
 
-static void log_output(struct work *work)
+/**
+ * Work handler which tries to get a message from the ring buffer and processes it.
+ * If a message was processed, the log output work item is resubmitted until there are no more messages.
+ *
+ * @param work Work item.
+ */
+static void log_output_handler(struct work *work)
 {
     // print number of dropped messages if any
     uint32_t dropped = ring_buffer_read_dropped();
 
     if (dropped > 0) {
-        print_format(system_debug_out, "<%u messages dropped>\r\n", (unsigned) dropped);
+        cbprintf(system_debug_out, "<%u messages dropped>" LOG_NEWLINE, (unsigned) dropped);
     }
 
     // process one log message
@@ -105,7 +119,7 @@ static void log_output(struct work *work)
     uint32_t timestamp_s = header.timestamp / 1000000ULL;
     uint32_t timestamp_us = header.timestamp % 1000000ULL;
 
-    print_format(
+    cbprintf(
         system_debug_out,
         "[%02u:%02u:%02u.%03u,%03u] <%s> %s: ",
         (unsigned) (timestamp_s / 3600),
@@ -117,21 +131,30 @@ static void log_output(struct work *work)
         header.module->name
     );
 
-    print_output(
+    cbprintf_restore(
         system_debug_out,
         buffer + sizeof(header),
         length - sizeof(header)
     );
 
-    print_format(
+    cbprintf(
         system_debug_out,
-        "\r\n"
+        LOG_NEWLINE
     );
 
     // resubmit work until there are no more log messages
     work_submit(work);
 }
 
+/**
+ * Write log message data into the ring buffer.
+ *
+ * The log message data must not be larger than `LOG_MAX_MSG_DATA_SIZE`.
+ * If there is not enough space in the ring buffer, a dropped counter is incremented and the data is discarded.
+ *
+ * @param data Data to put.
+ * @param length Length in bytes.
+ */
 static void ring_buffer_put(const void *data, size_t length)
 {
     system_critical_section_enter();
@@ -152,8 +175,8 @@ static void ring_buffer_put(const void *data, size_t length)
         buffer_free = LOG_BUFFER_SIZE - (ring_buffer.head - ring_buffer.tail);
     }
 
-    // 1 extra byte for data size and keep always 1 byte free to not
-    // have an ambiguous situation if head == tail
+    // 1 extra byte for data size
+    // 1 extra byte to not have an ambiguous situation if head == tail, in that case the ring buffer is empty
     if (length + 2 > buffer_free) {
         ring_buffer.dropped++;
         system_critical_section_exit();
@@ -173,6 +196,12 @@ static void ring_buffer_put(const void *data, size_t length)
     system_critical_section_exit();
 }
 
+/**
+ * Read log message data from the ring buffer.
+ *
+ * @param data Buffer to store the read log message data. Must be at least `LOG_MAX_MSG_DATA_SIZE` in size.
+ * @return Length of the retrieved message in bytes or 0 if the buffer was empty.
+ */
 static size_t ring_buffer_get(void *data)
 {
     system_critical_section_enter();
@@ -190,7 +219,8 @@ static size_t ring_buffer_get(void *data)
     // read data bytes
     for (size_t i = 0; i < length; i++) {
         if (ring_buffer.head == ring_buffer.tail) {
-            // this should not happen, but in any case we abort to not return garbage data
+            // inconsistency between the read data size byte and the data available in the buffer
+            // this should not happen, but in anyway we abort to not return garbage
             system_critical_section_exit();
             return 0;
         }
@@ -200,10 +230,14 @@ static size_t ring_buffer_get(void *data)
     }
 
     system_critical_section_exit();
-
     return length;
 }
 
+/**
+ * Reads and resets the dropped message counter.
+ *
+ * @return Counter value.
+ */
 static uint32_t ring_buffer_read_dropped()
 {
     system_critical_section_enter();
@@ -212,10 +246,15 @@ static uint32_t ring_buffer_read_dropped()
     ring_buffer.dropped = 0;
 
     system_critical_section_exit();
-
     return ret;
 }
 
+/**
+ * Get a string representation of the given log level.
+ *
+ * @param level Log level.
+ * @return String representation.
+ */
 static const char *log_level_str(enum log_level level)
 {
     switch (level) {

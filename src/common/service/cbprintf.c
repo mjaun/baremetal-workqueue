@@ -1,8 +1,8 @@
-#include "service/print.h"
+#include "service/cbprintf.h"
 #include <string.h>
 #include <stdarg.h>
 
-#define DIGITS_BUFFER_SIZE   32
+#define DIGITS_BUFFER_SIZE   21  // 64 bit number with base 10 gives max 20 characters, plus null terminator
 
 enum fspec_flag {
     FLAG_PAD_ZEROES = (1 << 0),
@@ -53,7 +53,7 @@ static const struct fspec fspec_init = {
 union fspec_value {
     uint64_t unsigned_int;
     int64_t signed_int;
-    const char* string;
+    const char *string;
 };
 
 struct write_buffer {
@@ -72,22 +72,29 @@ static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c);
 static bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_list ap);
 static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer, va_list ap);
 static bool_t fspec_unpack(const struct fspec *fspec, struct read_buffer *buffer, union fspec_value *fspec_value);
-static void fspec_print(print_func_t out, const struct fspec *fspec, union fspec_value value);
+static void fspec_print(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value);
 
 static bool_t buffer_write(struct write_buffer *buffer, const void *data, size_t length);
 static bool_t buffer_read(struct read_buffer *buffer, void *data, size_t length);
 
-static void print_padding(print_func_t out, size_t length, bool_t zeroes, char sign);
-static void print_string(print_func_t out, const char* str);
+static void print_padding(cbprintf_out_t out, size_t length, bool_t zeroes, char sign);
+static void print_string(cbprintf_out_t out, const char *str);
 
 static size_t encode_uint(char *buffer, uint64_t value, size_t base);
 static size_t get_base(enum fspec_specifier specifier);
 
-void print_format(print_func_t out, const char *format, ...)
+void cbprintf(cbprintf_out_t out, const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
 
+    cbvprintf(out, format, ap);
+
+    va_end(ap);
+}
+
+void cbvprintf(cbprintf_out_t out, const char *format, va_list ap)
+{
     struct fspec fspec = fspec_init;
     bool_t parsing = false;
 
@@ -121,11 +128,21 @@ void print_format(print_func_t out, const char *format, ...)
             }
         }
     }
-
-    va_end(ap);
 }
 
-size_t print_capture(void *packaged, size_t length, const char *format, va_list ap)
+size_t cbprintf_capture(void *packaged, size_t length, const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+
+    size_t ret = cbvprintf_capture(packaged, length, format, ap);
+
+    va_end(ap);
+
+    return ret;
+}
+
+size_t cbvprintf_capture(void *packaged, size_t length, const char *format, va_list ap)
 {
     // first store the format string itself
     struct write_buffer buffer = {
@@ -171,7 +188,7 @@ size_t print_capture(void *packaged, size_t length, const char *format, va_list 
     return buffer.index;
 }
 
-void print_output(print_func_t out, const void *packaged, size_t length)
+void cbprintf_restore(cbprintf_out_t out, const void *packaged, size_t length)
 {
     // first retrieve the format string itself
     struct read_buffer buffer = {
@@ -227,7 +244,7 @@ void print_output(print_func_t out, const void *packaged, size_t length)
  * Helper function to parse a format specifier. Initialize a new context with `fspec_init` then call this function
  * repeatedly for each character until either `PARSE_STATE_COMPLETE` or `PARSE_STATE_ERROR` is returned.
  *
- * @param fspec Parsing context. Continously filled with information about the parsed format specifier.
+ * @param fspec Format specifier continously filled with information.
  * @param c Next character to process.
  * @return State of the operation.
  */
@@ -312,6 +329,14 @@ static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c)
     return state;
 }
 
+/**
+ * Helper function to retrieve a value from a `va_list` based on a provided format specifier.
+ *
+ * @param fspec Format specifier.
+ * @param fspec_value Pointer to store the retrieved value.
+ * @param ap Argument list to get the value from.
+ * @return True on success, false if there was an error.
+ */
 bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_list ap)
 {
     bool_t ret = false;
@@ -407,7 +432,7 @@ bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_l
             break;
         }
         case SPECIFIER_STRING: {
-            const char* value = va_arg(ap, const char*);
+            const char *value = va_arg(ap, const char*);
             fspec_value->string = value;
             ret = true;
             break;
@@ -426,11 +451,11 @@ bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_l
 }
 
 /**
- * Helper function to pack a format specifier. Based on the information in `fspec`, the next argument from `ap`
- * is retrieved and stored in the provided `buffer`.
+ * Helper function to retrieve a value from a `va_list` based on a provided format specifier and pack it into
+ * the provided buffer.
  *
- * @param fspec Information about the value to pack.
- * @param buffer Package to write the value to.
+ * @param fspec Format specifier.
+ * @param buffer Buffer to pack the value into.
  * @param ap Argument list to get the value from.
  * @return True on success, false if there was an error.
  */
@@ -516,7 +541,7 @@ static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer,
             break;
         }
         case SPECIFIER_STRING: {
-            const char* value = va_arg(ap, const char*);
+            const char *value = va_arg(ap, const char*);
             ret = buffer_write(buffer, &value, sizeof(value));
             break;
         }
@@ -534,12 +559,11 @@ static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer,
 }
 
 /**
- * Helper function to unpack a format specifier. Based on the information in `fspec`, data is read from the
- * `package` and stored in the provided union `fspec_value`.
+ * Helper function to unpack a value from a buffer based on a provided format specifier.
  *
- * @param fspec Information about the value to unpack.
- * @param buffer Package to read the value to.
- * @param fspec_value Pointer to the union to store the unpacked value.
+ * @param fspec Format specifier.
+ * @param buffer Buffer to unpack the value from.
+ * @param fspec_value Pointer to store the unpacked value.
  * @return True on success, false if there was an error.
  */
 static bool_t fspec_unpack(const struct fspec *fspec, struct read_buffer *buffer, union fspec_value *fspec_value)
@@ -662,7 +686,7 @@ static bool_t fspec_unpack(const struct fspec *fspec, struct read_buffer *buffer
  * @param fspec Information about the value to print.
  * @param value Value to print.
  */
-static void fspec_print(print_func_t out, const struct fspec *fspec, union fspec_value value)
+static void fspec_print(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value)
 {
     switch (fspec->specifier) {
         case SPECIFIER_SIGNED_DEC: {
@@ -702,7 +726,7 @@ static void fspec_print(print_func_t out, const struct fspec *fspec, union fspec
             break;
         }
         default: {
-            // invalid specifier, do nothing
+            // invalid or unsupported specifier, do nothing
             break;
         }
     }
@@ -746,7 +770,15 @@ bool_t buffer_read(struct read_buffer *buffer, void *data, size_t length)
     return true;
 }
 
-static void print_padding(print_func_t out, size_t length, bool_t zeroes, char sign)
+/**
+ * Prints a padding for a right justified field.
+ *
+ * @param out Output function.
+ * @param length Length of the padding.
+ * @param zeroes True to pad with '0', false to pad with ' '.
+ * @param sign Optional sign for the field. Should be '+', '-', or '\0'. Always printed.
+ */
+static void print_padding(cbprintf_out_t out, size_t length, bool_t zeroes, char sign)
 {
     if (zeroes && (sign != '\0')) {
         out(sign);
@@ -767,14 +799,29 @@ static void print_padding(print_func_t out, size_t length, bool_t zeroes, char s
     }
 }
 
-static void print_string(print_func_t out, const char* str)
+/**
+ * Prints a null terminated string using the provided output function.
+ *
+ * @param out Output function.
+ * @param str Null terminated string to print.
+ */
+static void print_string(cbprintf_out_t out, const char *str)
 {
     for (size_t i = 0; str[i] != '\0'; i++) {
         out(str[i]);
     }
 }
 
-
+/**
+ * Encodes a unsigned integer value into a string buffer.
+ *
+ * The string is null terminated.
+ *
+ * @param buffer Buffer to write the encoded value into. Should be `DIGITS_BUFFER_SIZE` in size.
+ * @param value Value to encode.
+ * @param base Number base to use (should be 10 or 16).
+ * @return Number of characters written, excluding the null terminator.
+ */
 static size_t encode_uint(char *buffer, uint64_t value, size_t base)
 {
     // handle case where value is zero
@@ -821,6 +868,12 @@ static size_t encode_uint(char *buffer, uint64_t value, size_t base)
     return write_idx;
 }
 
+/**
+ * Returns the number base for the given specifier.
+ *
+ * @param specifier Format specifier.
+ * @return Number base.
+ */
 static size_t get_base(enum fspec_specifier specifier)
 {
     switch (specifier) {
@@ -831,6 +884,6 @@ static size_t get_base(enum fspec_specifier specifier)
         case SPECIFIER_UNSIGNED_HEX:
         case SPECIFIER_POINTER:
             return 16;
-        break;
+            break;
     }
 }
