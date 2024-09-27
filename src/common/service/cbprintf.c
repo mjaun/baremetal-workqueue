@@ -1,4 +1,5 @@
 #include "service/cbprintf.h"
+#include "service/assert.h"
 #include <string.h>
 #include <stdarg.h>
 
@@ -27,10 +28,11 @@ enum fspec_specifier {
     SPECIFIER_ESCAPE_PERCENT, ///< '%'
 };
 
-enum fspec_parse_state {
-    PARSE_STATE_CONTINUE, ///< Parsing of format specifier is ongoing, feed more characters.
-    PARSE_STATE_COMPLETE, ///< Parsing of format specifier is complete.
-    PARSE_STATE_ERROR, ///< Invalid or unsupported characters found.
+enum parse_state {
+    PARSE_STATE_REGULAR_CHAR, ///< A regular character was processed.
+    PARSE_STATE_FSPEC_PARSING, ///< Format specifier found, feed more characters.
+    PARSE_STATE_FSPEC_COMPLETE, ///< Parsing of format specifier is complete.
+    PARSE_STATE_FSPEC_ERROR, ///< Invalid or unsupported characters in format specifier found.
 };
 
 struct fspec {
@@ -38,17 +40,16 @@ struct fspec {
     uint32_t min_width; ///< Field width of the format specifier.
     enum fspec_length length; ///< Parsed length modifiers of the format specifier.
     enum fspec_specifier specifier; ///< Parsed format specifier type.
-
-    char _prev_char; ///< Internal variable to remember the last character.
 };
 
-static const struct fspec fspec_init = {
-    .flags = 0,
-    .min_width = 0,
-    .length = LENGTH_NONE,
-    .specifier = SPECIFIER_NONE,
-    ._prev_char = '\0',
+static const struct fspec fspec_init = {0};
+
+struct parse_context {
+    enum parse_state state;
+    struct fspec fspec;
 };
+
+static const struct parse_context parse_context_init = {0};
 
 union fspec_value {
     uint64_t unsigned_int;
@@ -68,17 +69,15 @@ struct read_buffer {
     size_t index;
 };
 
-static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c);
-static bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_list *ap);
-static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer, va_list *ap);
-static bool_t fspec_unpack(const struct fspec *fspec, struct read_buffer *buffer, union fspec_value *fspec_value);
-static void fspec_print(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value);
+static enum parse_state parse_format(struct parse_context *ctx, const struct fspec **fspec, char c);
+static enum parse_state parse_fspec(struct fspec *fspec, char c);
+
+static void print_fspec(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value);
+static void print_padding(cbprintf_out_t out, size_t length, bool_t zeroes, char sign);
+static void print_string(cbprintf_out_t out, const char *str);
 
 static bool_t buffer_write(struct write_buffer *buffer, const void *data, size_t length);
 static bool_t buffer_read(struct read_buffer *buffer, void *data, size_t length);
-
-static void print_padding(cbprintf_out_t out, size_t length, bool_t zeroes, char sign);
-static void print_string(cbprintf_out_t out, const char *str);
 
 static size_t encode_uint(char *buffer, uint64_t value, size_t base);
 static size_t get_base(enum fspec_specifier specifier);
@@ -95,38 +94,99 @@ void cbprintf(cbprintf_out_t out, const char *format, ...)
 
 void cbvprintf(cbprintf_out_t out, const char *format, va_list ap)
 {
-    struct fspec fspec = fspec_init;
-    bool_t parsing = false;
+    struct parse_context ctx = parse_context_init;
 
     for (size_t i = 0; format[i] != '\0'; i++) {
-        if (!parsing) {
-            // print characters until we reach the beginning of a format specifier
-            if (format[i] == '%') {
-                fspec = fspec_init;
-                parsing = true;
-            } else {
-                out(format[i]);
-            }
-        } else {
-            // pass characters to parser until complete
-            enum fspec_parse_state state = fspec_parse(&fspec, format[i]);
+        const struct fspec *fspec = NULL;
+        enum parse_state state = parse_format(&ctx, &fspec, format[i]);
 
-            if (state == PARSE_STATE_ERROR) {
-                break;
-            }
-
-            // retrieve argument and print value
-            if (state == PARSE_STATE_COMPLETE) {
-                union fspec_value value;
-
-                if (!fspec_get(&fspec, &value, &ap)) {
-                    break;
-                }
-
-                fspec_print(out, &fspec, value);
-                parsing = false;
-            }
+        // regular characters are directly printed
+        if (state == PARSE_STATE_REGULAR_CHAR) {
+            out(format[i]);
+            continue;
         }
+
+        // format specifier is being parsed -> continue
+        if (state == PARSE_STATE_FSPEC_PARSING) {
+            continue;
+        }
+
+        // format specifier parsing is complete -> retrieve argument and print it
+        if (state == PARSE_STATE_FSPEC_COMPLETE) {
+            union fspec_value value = {0};
+
+            // the following block cannot be extracted to a helper function because a `va_list` may become invalid
+            // after it is accessed via `va_arg` and the function returns
+            switch (fspec->specifier) {
+                case SPECIFIER_SIGNED_DEC:
+                    switch (fspec->length) {
+                        case LENGTH_NONE:
+                        case LENGTH_HH: // char is promoted to int when passed to variadic function
+                        case LENGTH_H: // short is promoted to int when passed to variadic function
+                            value.signed_int = va_arg(ap, int);
+                            break;
+                        case LENGTH_L:
+                            value.signed_int = va_arg(ap, long);
+                            break;
+                        case LENGTH_LL:
+                            value.signed_int = va_arg(ap, long long);
+                            break;
+                        case LENGTH_Z:
+                            value.signed_int = va_arg(ap, size_t);
+                            break;
+                        default:
+                            RUNTIME_ASSERT(false);
+                            break;
+                    }
+                    break;
+                case SPECIFIER_UNSIGNED_DEC:
+                case SPECIFIER_UNSIGNED_HEX:
+                    switch (fspec->length) {
+                        case LENGTH_NONE:
+                        case LENGTH_HH: // char is promoted to int when passed to variadic function
+                        case LENGTH_H: // short is promoted to int when passed to variadic function
+                            value.unsigned_int = va_arg(ap, unsigned int);
+                            break;
+                        case LENGTH_L:
+                            value.unsigned_int = va_arg(ap, unsigned long);
+                            break;
+                        case LENGTH_LL:
+                            value.unsigned_int = va_arg(ap, unsigned long long);
+                            break;
+                        case LENGTH_Z:
+                            value.unsigned_int = va_arg(ap, size_t);
+                            break;
+                        default:
+                            RUNTIME_ASSERT(false);
+                            break;
+                    }
+                    break;
+                case SPECIFIER_POINTER:
+                    value.unsigned_int = (uintptr_t) va_arg(ap, void*);
+                    break;
+                case SPECIFIER_STRING:
+                    value.string = va_arg(ap, const char*);
+                    break;
+                case SPECIFIER_ESCAPE_PERCENT:
+                    // do nothing
+                    break;
+                default:
+                    RUNTIME_ASSERT(false);
+                    break;
+            }
+
+            print_fspec(out, fspec, value);
+            continue;
+        }
+
+        // if a format specifier could not be parsed, we abort processing
+        if (state == PARSE_STATE_FSPEC_ERROR) {
+            break;
+        }
+
+        // unhandled state
+        RUNTIME_ASSERT(false);
+        break;
     }
 }
 
@@ -156,35 +216,140 @@ size_t cbvprintf_capture(void *packaged, size_t length, const char *format, va_l
     }
 
     // then parse through the format string and store all contained arguments
-    struct fspec fspec = fspec_init;
-    bool_t parsing = false;
+    struct parse_context ctx = parse_context_init;
 
     for (size_t i = 0; format[i] != '\0'; i++) {
-        if (!parsing) {
-            // skip characters until we reach the beginning of a format specifier
-            if (format[i] == '%') {
-                fspec = fspec_init;
-                parsing = true;
-            }
-        } else {
-            // pass characters to parser until complete
-            enum fspec_parse_state state = fspec_parse(&fspec, format[i]);
+        const struct fspec *fspec = NULL;
+        enum parse_state state = parse_format(&ctx, &fspec, format[i]);
 
-            if (state == PARSE_STATE_ERROR) {
-                buffer.index = 0;
-                break;
-            }
+        // regular characters are ignored
+        if (state == PARSE_STATE_REGULAR_CHAR) {
+            continue;
+        }
 
-            // pack argument into buffer
-            if (state == PARSE_STATE_COMPLETE) {
-                if (!fspec_pack(&fspec, &buffer, &ap)) {
-                    buffer.index = 0;
+        // format specifier is being parsed -> continue
+        if (state == PARSE_STATE_FSPEC_PARSING) {
+            continue;
+        }
+
+        // format specifier parsing is complete -> retrieve argument and store it
+        if (state == PARSE_STATE_FSPEC_COMPLETE) {
+            // the following block cannot be extracted to a helper function because a `va_list` may become invalid
+            // after it is accessed via `va_arg` and the function returns
+            switch (fspec->specifier) {
+                case SPECIFIER_SIGNED_DEC:
+                    switch (fspec->length) {
+                        case LENGTH_NONE: {
+                            int value = va_arg(ap, int);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_HH: {
+                            // char is promoted to int when passed to variadic function
+                            char value = (char) va_arg(ap, int);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_H: {
+                            // short is promoted to int when passed to variadic function
+                            short value = (short) va_arg(ap, int);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_L: {
+                            long value = va_arg(ap, long);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_LL: {
+                            long long value = va_arg(ap, long long);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_Z: {
+                            size_t value = va_arg(ap, size_t);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        default: {
+                            RUNTIME_ASSERT(false);
+                            break;
+                        }
+                    }
+                    break;
+                case SPECIFIER_UNSIGNED_DEC:
+                case SPECIFIER_UNSIGNED_HEX:
+                    switch (fspec->length) {
+                        case LENGTH_NONE: {
+                            int value = va_arg(ap, int);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_HH: {
+                            // char is promoted to int when passed to variadic function
+                            char value = (char) va_arg(ap, int);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_H: {
+                            // short is promoted to int when passed to variadic function
+                            short value = (short) va_arg(ap, int);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_L: {
+                            long value = va_arg(ap, long);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_LL: {
+                            long long value = va_arg(ap, long long);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        case LENGTH_Z: {
+                            size_t value = va_arg(ap, size_t);
+                            buffer_write(&buffer, &value, sizeof(value));
+                            break;
+                        }
+                        default: {
+                            RUNTIME_ASSERT(false);
+                            break;
+                        }
+                    }
+                    break;
+                case SPECIFIER_POINTER: {
+                    uintptr_t value = (uintptr_t) va_arg(ap, void*);
+                    buffer_write(&buffer, &value, sizeof(value));
                     break;
                 }
-
-                parsing = false;
+                case SPECIFIER_STRING: {
+                    const char *value = va_arg(ap, const char*);
+                    buffer_write(&buffer, &value, sizeof(value));
+                    break;
+                }
+                case SPECIFIER_ESCAPE_PERCENT: {
+                    // do nothing
+                    break;
+                }
+                default: {
+                    RUNTIME_ASSERT(false);
+                    break;
+                }
             }
+
+            continue;
         }
+
+        // if a format specifier could not be parsed, we discard any data and abort processing
+        if (state == PARSE_STATE_FSPEC_ERROR) {
+            buffer.index = 0;
+            break;
+        }
+
+        // unhandled state
+        RUNTIME_ASSERT(false);
+        break;
     }
 
     return buffer.index;
@@ -202,57 +367,220 @@ void cbprintf_restore(cbprintf_out_t out, const void *packaged, size_t length)
     const char *format = NULL;
 
     if (!buffer_read(&buffer, &format, sizeof(format))) {
+        // cannot happen unless the passed data is corrupt or incomplete
+        RUNTIME_ASSERT(false);
         return;
     }
 
     // then parse through the format string and retrieve all contained arguments
-    struct fspec fspec = fspec_init;
-    bool_t parsing = false;
+    struct parse_context ctx = parse_context_init;
 
     for (size_t i = 0; format[i] != '\0'; i++) {
-        if (!parsing) {
-            // print characters until we reach the beginning of a format specifier
-            if (format[i] == '%') {
-                fspec = fspec_init;
-                parsing = true;
-            } else {
-                out(format[i]);
-            }
-        } else {
-            // pass characters to parser until complete
-            enum fspec_parse_state state = fspec_parse(&fspec, format[i]);
+        const struct fspec *fspec = NULL;
+        enum parse_state state = parse_format(&ctx, &fspec, format[i]);
 
-            if (state == PARSE_STATE_ERROR) {
-                buffer.index = 0;
+        // regular characters are directly printed
+        if (state == PARSE_STATE_REGULAR_CHAR) {
+            out(format[i]);
+            continue;
+        }
+
+        // format specifier is being parsed -> continue
+        if (state == PARSE_STATE_FSPEC_PARSING) {
+            continue;
+        }
+
+        // format specifier parsing is complete -> read value and print it
+        if (state == PARSE_STATE_FSPEC_COMPLETE) {
+            union fspec_value value = {0};
+            bool_t value_read = false;
+
+            // the following block is not extracted to a helper function to stay consistent with cbprintf_capture
+            switch (fspec->specifier) {
+                case SPECIFIER_SIGNED_DEC: {
+                    switch (fspec->length) {
+                        case LENGTH_NONE: {
+                            int temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.signed_int = temp;
+                            break;
+                        }
+                        case LENGTH_HH: {
+                            char temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.signed_int = temp;
+                            break;
+                        }
+                        case LENGTH_H: {
+                            short temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.signed_int = temp;
+                            break;
+                        }
+                        case LENGTH_L: {
+                            long temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.signed_int = temp;
+                            break;
+                        }
+                        case LENGTH_LL: {
+                            long long temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.signed_int = temp;
+                            break;
+                        }
+                        case LENGTH_Z: {
+                            size_t temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.signed_int = temp;
+                            break;
+                        }
+                        default: {
+                            RUNTIME_ASSERT(false);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case SPECIFIER_UNSIGNED_DEC:
+                case SPECIFIER_UNSIGNED_HEX: {
+                    switch (fspec->length) {
+                        case LENGTH_NONE: {
+                            unsigned int temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.unsigned_int = temp;
+                            break;
+                        }
+                        case LENGTH_HH: {
+                            unsigned char temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.unsigned_int = temp;
+                            break;
+                        }
+                        case LENGTH_H: {
+                            unsigned short temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.unsigned_int = temp;
+                            break;
+                        }
+                        case LENGTH_L: {
+                            unsigned long temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.unsigned_int = temp;
+                            break;
+                        }
+                        case LENGTH_LL: {
+                            unsigned long long temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.unsigned_int = temp;
+                            break;
+                        }
+                        case LENGTH_Z: {
+                            size_t temp = 0;
+                            value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                            value.unsigned_int = temp;
+                            break;
+                        }
+                        default: {
+                            RUNTIME_ASSERT(false);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case SPECIFIER_POINTER: {
+                    uintptr_t temp = 0;
+                    value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                    value.unsigned_int = temp;
+                    break;
+                }
+                case SPECIFIER_STRING: {
+                    const char *temp = 0;
+                    value_read = buffer_read(&buffer, &temp, sizeof(temp));
+                    value.string = temp;
+                    break;
+                }
+                case SPECIFIER_ESCAPE_PERCENT: {
+                    value_read = true;
+                    break;
+                }
+                default: {
+                    RUNTIME_ASSERT(false);
+                    break;
+                }
+            }
+
+            if (!value_read) {
+                // cannot happen unless the passed data is corrupt or incomplete
+                RUNTIME_ASSERT(false);
                 break;
             }
 
-            // read argument from buffer and print value
-            if (state == PARSE_STATE_COMPLETE) {
-                union fspec_value value;
-
-                if (!fspec_unpack(&fspec, &buffer, &value)) {
-                    break;
-                }
-
-                fspec_print(out, &fspec, value);
-                parsing = false;
-            }
+            print_fspec(out, fspec, value);
+            continue;
         }
+
+        // unhandled state
+        // parsing error has to occur already when capturing
+        RUNTIME_ASSERT(false);
+        break;
     }
 }
 
 /**
- * Helper function to parse a format specifier. Initialize a new context with `fspec_init` then call this function
- * repeatedly for each character until either `PARSE_STATE_COMPLETE` or `PARSE_STATE_ERROR` is returned.
+ * Helper function to parse a format string.
  *
- * @param fspec Format specifier continously filled with information.
+ * This function is supposed to be called repeatedly for each character in a format string.
+ * If the function returns `PARSE_STATE_FSPEC_COMPLETE`, `fspec` is set to the parsed format specifier.
+ * If the function returns `PARSE_STATE_FSPEC_ERROR`, parsing must be aborted.
+ *
+ * @param ctx Parser context.
+ * @param fspec Pointer to the parsed format specifier.
  * @param c Next character to process.
  * @return State of the operation.
  */
-static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c)
+static enum parse_state parse_format(struct parse_context *ctx, const struct fspec **fspec, char c)
 {
-    enum fspec_parse_state state = PARSE_STATE_CONTINUE;
+    *fspec = NULL;
+
+    switch (ctx->state) {
+        case PARSE_STATE_REGULAR_CHAR: {
+            if (c == '%') {
+                ctx->state = PARSE_STATE_FSPEC_PARSING;
+                ctx->fspec = fspec_init;
+            }
+            break;
+        }
+        case PARSE_STATE_FSPEC_PARSING: {
+            ctx->state = parse_fspec(&ctx->fspec, c);
+
+            if (ctx->state == PARSE_STATE_FSPEC_COMPLETE) {
+                *fspec = &ctx->fspec;
+            }
+            break;
+        }
+        case PARSE_STATE_FSPEC_COMPLETE: {
+            if (c == '%') {
+                ctx->state = PARSE_STATE_FSPEC_PARSING;
+                ctx->fspec = fspec_init;
+            } else {
+                ctx->state = PARSE_STATE_REGULAR_CHAR;
+            }
+            break;
+        }
+        case PARSE_STATE_FSPEC_ERROR: {
+            // parsing must not continue after a parsing error
+            RUNTIME_ASSERT(false);
+            break;
+        }
+    }
+
+    return ctx->state;
+}
+
+static enum parse_state parse_fspec(struct fspec *fspec, char c)
+{
+    enum parse_state state = PARSE_STATE_FSPEC_PARSING;
 
     switch (c) {
         case '0': {
@@ -276,7 +604,7 @@ static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c)
             break;
         }
         case 'h': {
-            if (fspec->_prev_char == 'h') {
+            if (fspec->length == LENGTH_H) {
                 fspec->length = LENGTH_HH;
             } else {
                 fspec->length = LENGTH_H;
@@ -284,7 +612,7 @@ static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c)
             break;
         }
         case 'l': {
-            if (fspec->_prev_char == 'l') {
+            if (fspec->length == LENGTH_L) {
                 fspec->length = LENGTH_LL;
             } else {
                 fspec->length = LENGTH_L;
@@ -298,387 +626,36 @@ static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c)
         case 'd':
         case 'i': {
             fspec->specifier = SPECIFIER_SIGNED_DEC;
-            state = PARSE_STATE_COMPLETE;
+            state = PARSE_STATE_FSPEC_COMPLETE;
             break;
         }
         case 'u': {
             fspec->specifier = SPECIFIER_UNSIGNED_DEC;
-            state = PARSE_STATE_COMPLETE;
+            state = PARSE_STATE_FSPEC_COMPLETE;
             break;
         }
         case 'x': {
             fspec->specifier = SPECIFIER_UNSIGNED_HEX;
-            state = PARSE_STATE_COMPLETE;
+            state = PARSE_STATE_FSPEC_COMPLETE;
             break;
         }
         case 'p': {
             fspec->specifier = SPECIFIER_POINTER;
-            state = PARSE_STATE_COMPLETE;
+            state = PARSE_STATE_FSPEC_COMPLETE;
             break;
         }
         case 's': {
             fspec->specifier = SPECIFIER_STRING;
-            state = PARSE_STATE_COMPLETE;
+            state = PARSE_STATE_FSPEC_COMPLETE;
             break;
         }
         default: {
-            state = PARSE_STATE_ERROR;
+            state = PARSE_STATE_FSPEC_ERROR;
             break;
         }
     }
 
-    fspec->_prev_char = c;
     return state;
-}
-
-/**
- * Helper function to retrieve a value from a `va_list` based on a provided format specifier.
- *
- * @param fspec Format specifier.
- * @param fspec_value Pointer to store the retrieved value.
- * @param ap Argument list to get the value from.
- * @return True on success, false if there was an error.
- */
-bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_list *ap)
-{
-    bool_t ret = false;
-
-    switch (fspec->specifier) {
-        case SPECIFIER_SIGNED_DEC: {
-            switch (fspec->length) {
-                case LENGTH_NONE: {
-                    int value = va_arg(*ap, int);
-                    fspec_value->signed_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_HH: {
-                    char value = (char) va_arg(*ap, int);
-                    fspec_value->signed_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_H: {
-                    short value = (short) va_arg(*ap, int);
-                    fspec_value->signed_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_L: {
-                    long value = va_arg(*ap, long);
-                    fspec_value->signed_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_LL: {
-                    long long value = va_arg(*ap, long long);
-                    fspec_value->signed_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_Z: {
-                    size_t value = va_arg(*ap, size_t);
-                    fspec_value->signed_int = value;
-                    ret = true;
-                    break;
-                }
-            }
-            break;
-        }
-        case SPECIFIER_UNSIGNED_DEC:
-        case SPECIFIER_UNSIGNED_HEX: {
-            switch (fspec->length) {
-                case LENGTH_NONE: {
-                    unsigned int value = va_arg(*ap, unsigned int);
-                    fspec_value->unsigned_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_HH: {
-                    unsigned char value = (unsigned char) va_arg(*ap, int);
-                    fspec_value->unsigned_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_H: {
-                    unsigned short value = (unsigned short) va_arg(*ap, int);
-                    fspec_value->unsigned_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_L: {
-                    unsigned long value = va_arg(*ap, unsigned long);
-                    fspec_value->unsigned_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_LL: {
-                    unsigned long long value = va_arg(*ap, unsigned long long);
-                    fspec_value->unsigned_int = value;
-                    ret = true;
-                    break;
-                }
-                case LENGTH_Z: {
-                    size_t value = va_arg(*ap, size_t);
-                    fspec_value->unsigned_int = value;
-                    ret = true;
-                    break;
-                }
-            }
-            break;
-        }
-        case SPECIFIER_POINTER: {
-            uintptr_t value = (uintptr_t) va_arg(*ap, void*);
-            fspec_value->unsigned_int = value;
-            ret = true;
-            break;
-        }
-        case SPECIFIER_STRING: {
-            const char *value = va_arg(*ap, const char*);
-            fspec_value->string = value;
-            ret = true;
-            break;
-        }
-        case SPECIFIER_ESCAPE_PERCENT: {
-            ret = true;
-            break;
-        }
-        default: {
-            ret = false;
-            break;
-        }
-    }
-
-    return ret;
-}
-
-/**
- * Helper function to retrieve a value from a `va_list` based on a provided format specifier and pack it into
- * the provided buffer.
- *
- * @param fspec Format specifier.
- * @param buffer Buffer to pack the value into.
- * @param ap Argument list to get the value from.
- * @return True on success, false if there was an error.
- */
-static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer, va_list *ap)
-{
-    bool_t ret = false;
-
-    switch (fspec->specifier) {
-        case SPECIFIER_SIGNED_DEC: {
-            switch (fspec->length) {
-                case LENGTH_NONE: {
-                    int value = va_arg(*ap, int);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_HH: {
-                    char value = (char) va_arg(*ap, int);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_H: {
-                    short value = (short) va_arg(*ap, int);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_L: {
-                    long value = va_arg(*ap, long);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_LL: {
-                    long long value = va_arg(*ap, long long);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_Z: {
-                    size_t value = va_arg(*ap, size_t);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-            }
-            break;
-        }
-        case SPECIFIER_UNSIGNED_DEC:
-        case SPECIFIER_UNSIGNED_HEX: {
-            switch (fspec->length) {
-                case LENGTH_NONE: {
-                    unsigned int value = va_arg(*ap, unsigned int);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_HH: {
-                    unsigned char value = (unsigned char) va_arg(*ap, int);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_H: {
-                    unsigned short value = (unsigned short) va_arg(*ap, int);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_L: {
-                    unsigned long value = va_arg(*ap, unsigned long);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_LL: {
-                    unsigned long long value = va_arg(*ap, unsigned long long);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-                case LENGTH_Z: {
-                    size_t value = va_arg(*ap, size_t);
-                    ret = buffer_write(buffer, &value, sizeof(value));
-                    break;
-                }
-            }
-            break;
-        }
-        case SPECIFIER_POINTER: {
-            uintptr_t value = (uintptr_t) va_arg(*ap, void*);
-            ret = buffer_write(buffer, &value, sizeof(value));
-            break;
-        }
-        case SPECIFIER_STRING: {
-            const char *value = va_arg(*ap, const char*);
-            ret = buffer_write(buffer, &value, sizeof(value));
-            break;
-        }
-        case SPECIFIER_ESCAPE_PERCENT: {
-            ret = true;
-            break;
-        }
-        default: {
-            ret = false;
-            break;
-        }
-    }
-
-    return ret;
-}
-
-/**
- * Helper function to unpack a value from a buffer based on a provided format specifier.
- *
- * @param fspec Format specifier.
- * @param buffer Buffer to unpack the value from.
- * @param fspec_value Pointer to store the unpacked value.
- * @return True on success, false if there was an error.
- */
-static bool_t fspec_unpack(const struct fspec *fspec, struct read_buffer *buffer, union fspec_value *fspec_value)
-{
-    bool ret = false;
-
-    switch (fspec->specifier) {
-        case SPECIFIER_SIGNED_DEC: {
-            switch (fspec->length) {
-                case LENGTH_NONE: {
-                    int value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_HH: {
-                    char value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_H: {
-                    short value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_L: {
-                    long value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_LL: {
-                    long long value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_Z: {
-                    size_t value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-            }
-            break;
-        }
-        case SPECIFIER_UNSIGNED_DEC:
-        case SPECIFIER_UNSIGNED_HEX: {
-            switch (fspec->length) {
-                case LENGTH_NONE: {
-                    unsigned int value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_HH: {
-                    unsigned char value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_H: {
-                    unsigned short value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_L: {
-                    unsigned long value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_LL: {
-                    unsigned long long value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-                case LENGTH_Z: {
-                    size_t value = 0;
-                    ret = buffer_read(buffer, &value, sizeof(value));
-                    fspec_value->signed_int = value;
-                    break;
-                }
-            }
-            break;
-        }
-        case SPECIFIER_POINTER: {
-            uintptr_t value = 0;
-            ret = buffer_read(buffer, &value, sizeof(value));
-            fspec_value->signed_int = value;
-            break;
-        }
-        case SPECIFIER_STRING: {
-            const char *value = 0;
-            ret = buffer_read(buffer, &value, sizeof(value));
-            fspec_value->string = value;
-            break;
-        }
-        case SPECIFIER_ESCAPE_PERCENT: {
-            ret = true;
-            break;
-        }
-        default: {
-            ret = false;
-            break;
-        }
-    }
-
-    return ret;
 }
 
 /**
@@ -688,7 +665,7 @@ static bool_t fspec_unpack(const struct fspec *fspec, struct read_buffer *buffer
  * @param fspec Information about the value to print.
  * @param value Value to print.
  */
-static void fspec_print(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value)
+static void print_fspec(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value)
 {
     switch (fspec->specifier) {
         case SPECIFIER_SIGNED_DEC: {
@@ -728,7 +705,7 @@ static void fspec_print(cbprintf_out_t out, const struct fspec *fspec, union fsp
             break;
         }
         default: {
-            // invalid or unsupported specifier, do nothing
+            RUNTIME_ASSERT(false);
             break;
         }
     }
@@ -879,13 +856,14 @@ static size_t encode_uint(char *buffer, uint64_t value, size_t base)
 static size_t get_base(enum fspec_specifier specifier)
 {
     switch (specifier) {
-        default:
         case SPECIFIER_SIGNED_DEC:
         case SPECIFIER_UNSIGNED_DEC:
             return 10;
         case SPECIFIER_UNSIGNED_HEX:
         case SPECIFIER_POINTER:
             return 16;
-            break;
+        default:
+            RUNTIME_ASSERT(false);
+            return 0;
     }
 }

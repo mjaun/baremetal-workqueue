@@ -1,4 +1,5 @@
 #include "service/system.h"
+#include "service/assert.h"
 #include "util/unused.h"
 
 static u64_us_t uptime_counter;
@@ -24,7 +25,8 @@ void system_enter_sleep_mode(void)
 {
     if (scheduled_wakeup == 0) {
         // no wakeup scheduled, should not happen
-        while (true) {}
+        RUNTIME_ASSERT(false);
+        return;
     }
 
     uptime_counter = scheduled_wakeup;

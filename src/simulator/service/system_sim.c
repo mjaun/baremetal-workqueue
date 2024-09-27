@@ -1,4 +1,5 @@
 #include "service/system_sim.h"
+#include "service/assert.h"
 #include "service/log.h"
 #include <unistd.h>
 #include <stdlib.h>
@@ -30,7 +31,8 @@ void system_enter_sleep_mode(void)
 {
     if (scheduled_wakeup == 0) {
         // no wakeup scheduled, should not happen
-        while (true) {}
+        RUNTIME_ASSERT(false);
+        return;
     }
 
     u64_us_t current_uptime = system_uptime_get();

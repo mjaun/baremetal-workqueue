@@ -2,7 +2,6 @@
 #include "service/work.h"
 #include "driver/gpio.h"
 #include "service/log.h"
-#include "service/assert.h"
 #include "service/system.h"
 #include "util/unused.h"
 
@@ -27,7 +26,7 @@ static void exti_handler(struct gpio_pin *pin)
     LOG_INF("button pressed ISR: %u %s!", 42, "test");
     u64_us_t end = system_uptime_get();
 
-    LOG_INF("took %u us", (unsigned) (end - start));
+    LOG_INF("logging took %u us", (unsigned) (end - start));
 
     work_submit(&work_button_pressed);
 }
@@ -36,7 +35,5 @@ static void print_button_pressed(struct work *work)
 {
     ARG_UNUSED(work);
 
-    LOG_INF("button pressed work!");
-
-    RUNTIME_ASSERT(false);
+    LOG_INF("button pressed work");
 }

@@ -2,6 +2,7 @@
 #include "service/system.h"
 #include "service/cbprintf.h"
 #include "service/work.h"
+#include "service/assert.h"
 #include <string.h>
 #include <stdarg.h>
 
@@ -15,11 +16,18 @@
 #define LOG_NEWLINE              "\n"
 #endif
 
+/**
+ * Ring buffer for log data.
+ *
+ * Putting data moves the head forward. Getting data moves the tail forward.
+ * The indices wrap around if the end of the buffer is reached.
+ * If head == tail the buffer is empty. One byte must always left free otherwise this becomes ambigous.
+ */
 struct log_buffer {
-    uint8_t data[LOG_BUFFER_SIZE];
-    size_t head;
-    size_t tail;
-    uint32_t dropped;
+    uint8_t data[LOG_BUFFER_SIZE]; ///< Actual data.
+    size_t head; ///< Index of the ring buffer head.
+    size_t tail; ///< Index of the ring buffer tail.
+    uint32_t dropped; ///< Number of dropped log messages, because there was not enough space.
 };
 
 /**
@@ -135,7 +143,7 @@ bool_t log_process(void)
     size_t length = ring_buffer_get(buffer);
 
     if (length < sizeof(struct log_message_header)) {
-        // length should always be zero here
+        RUNTIME_ASSERT(length == 0);
         return false;
     }
 
@@ -182,16 +190,11 @@ bool_t log_process(void)
  */
 static void ring_buffer_put(const void *data, size_t length)
 {
+    RUNTIME_ASSERT(length <= LOG_MAX_MSG_DATA_SIZE);
+
     system_critical_section_enter();
 
-    // check for illegal data size
-    if (length > LOG_MAX_MSG_DATA_SIZE) {
-        ring_buffer.dropped++;
-        system_critical_section_exit();
-        return;
-    }
-
-    // check if enough space is left
+    // check if enough space is available
     size_t buffer_free = 0;
 
     if (ring_buffer.tail > ring_buffer.head) {
@@ -201,7 +204,7 @@ static void ring_buffer_put(const void *data, size_t length)
     }
 
     // 1 extra byte for data size
-    // 1 extra byte to not have an ambiguous situation if head == tail, in that case the ring buffer is empty
+    // 1 extra byte to not have an ambiguous situation if head == tail
     if (length + 2 > buffer_free) {
         ring_buffer.dropped++;
         system_critical_section_exit();
@@ -245,8 +248,8 @@ static size_t ring_buffer_get(void *data)
     for (size_t i = 0; i < length; i++) {
         if (ring_buffer.head == ring_buffer.tail) {
             // inconsistency between the read data size byte and the data available in the buffer
-            // this should not happen, but in anyway we abort to not return garbage
             system_critical_section_exit();
+            RUNTIME_ASSERT(false);
             return 0;
         }
 
