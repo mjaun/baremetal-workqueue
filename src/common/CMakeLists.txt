@@ -7,6 +7,7 @@ app_sources(
     service/work.c
     service/log.c
     service/cbprintf.c
+    service/assert.c
 )
 
 set(TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/unit_test)

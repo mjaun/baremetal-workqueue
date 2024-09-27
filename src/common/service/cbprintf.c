@@ -69,8 +69,8 @@ struct read_buffer {
 };
 
 static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c);
-static bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_list ap);
-static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer, va_list ap);
+static bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_list *ap);
+static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer, va_list *ap);
 static bool_t fspec_unpack(const struct fspec *fspec, struct read_buffer *buffer, union fspec_value *fspec_value);
 static void fspec_print(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value);
 
@@ -119,7 +119,7 @@ void cbvprintf(cbprintf_out_t out, const char *format, va_list ap)
             if (state == PARSE_STATE_COMPLETE) {
                 union fspec_value value;
 
-                if (!fspec_get(&fspec, &value, ap)) {
+                if (!fspec_get(&fspec, &value, &ap)) {
                     break;
                 }
 
@@ -177,10 +177,12 @@ size_t cbvprintf_capture(void *packaged, size_t length, const char *format, va_l
 
             // pack argument into buffer
             if (state == PARSE_STATE_COMPLETE) {
-                if (!fspec_pack(&fspec, &buffer, ap)) {
+                if (!fspec_pack(&fspec, &buffer, &ap)) {
                     buffer.index = 0;
                     break;
                 }
+
+                parsing = false;
             }
         }
     }
@@ -337,7 +339,7 @@ static enum fspec_parse_state fspec_parse(struct fspec *fspec, char c)
  * @param ap Argument list to get the value from.
  * @return True on success, false if there was an error.
  */
-bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_list ap)
+bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_list *ap)
 {
     bool_t ret = false;
 
@@ -345,37 +347,37 @@ bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_l
         case SPECIFIER_SIGNED_DEC: {
             switch (fspec->length) {
                 case LENGTH_NONE: {
-                    int value = va_arg(ap, int);
+                    int value = va_arg(*ap, int);
                     fspec_value->signed_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_HH: {
-                    char value = (char) va_arg(ap, int);
+                    char value = (char) va_arg(*ap, int);
                     fspec_value->signed_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_H: {
-                    short value = (short) va_arg(ap, int);
+                    short value = (short) va_arg(*ap, int);
                     fspec_value->signed_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_L: {
-                    long value = va_arg(ap, long);
+                    long value = va_arg(*ap, long);
                     fspec_value->signed_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_LL: {
-                    long long value = va_arg(ap, long long);
+                    long long value = va_arg(*ap, long long);
                     fspec_value->signed_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_Z: {
-                    size_t value = va_arg(ap, size_t);
+                    size_t value = va_arg(*ap, size_t);
                     fspec_value->signed_int = value;
                     ret = true;
                     break;
@@ -387,37 +389,37 @@ bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_l
         case SPECIFIER_UNSIGNED_HEX: {
             switch (fspec->length) {
                 case LENGTH_NONE: {
-                    unsigned int value = va_arg(ap, unsigned int);
+                    unsigned int value = va_arg(*ap, unsigned int);
                     fspec_value->unsigned_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_HH: {
-                    unsigned char value = (unsigned char) va_arg(ap, int);
+                    unsigned char value = (unsigned char) va_arg(*ap, int);
                     fspec_value->unsigned_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_H: {
-                    unsigned short value = (unsigned short) va_arg(ap, int);
+                    unsigned short value = (unsigned short) va_arg(*ap, int);
                     fspec_value->unsigned_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_L: {
-                    unsigned long value = va_arg(ap, unsigned long);
+                    unsigned long value = va_arg(*ap, unsigned long);
                     fspec_value->unsigned_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_LL: {
-                    unsigned long long value = va_arg(ap, unsigned long long);
+                    unsigned long long value = va_arg(*ap, unsigned long long);
                     fspec_value->unsigned_int = value;
                     ret = true;
                     break;
                 }
                 case LENGTH_Z: {
-                    size_t value = va_arg(ap, size_t);
+                    size_t value = va_arg(*ap, size_t);
                     fspec_value->unsigned_int = value;
                     ret = true;
                     break;
@@ -426,13 +428,13 @@ bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_l
             break;
         }
         case SPECIFIER_POINTER: {
-            uintptr_t value = (uintptr_t) va_arg(ap, void*);
+            uintptr_t value = (uintptr_t) va_arg(*ap, void*);
             fspec_value->unsigned_int = value;
             ret = true;
             break;
         }
         case SPECIFIER_STRING: {
-            const char *value = va_arg(ap, const char*);
+            const char *value = va_arg(*ap, const char*);
             fspec_value->string = value;
             ret = true;
             break;
@@ -459,7 +461,7 @@ bool_t fspec_get(const struct fspec *fspec, union fspec_value *fspec_value, va_l
  * @param ap Argument list to get the value from.
  * @return True on success, false if there was an error.
  */
-static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer, va_list ap)
+static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer, va_list *ap)
 {
     bool_t ret = false;
 
@@ -467,32 +469,32 @@ static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer,
         case SPECIFIER_SIGNED_DEC: {
             switch (fspec->length) {
                 case LENGTH_NONE: {
-                    int value = va_arg(ap, int);
+                    int value = va_arg(*ap, int);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_HH: {
-                    char value = (char) va_arg(ap, int);
+                    char value = (char) va_arg(*ap, int);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_H: {
-                    short value = (short) va_arg(ap, int);
+                    short value = (short) va_arg(*ap, int);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_L: {
-                    long value = va_arg(ap, long);
+                    long value = va_arg(*ap, long);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_LL: {
-                    long long value = va_arg(ap, long long);
+                    long long value = va_arg(*ap, long long);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_Z: {
-                    size_t value = va_arg(ap, size_t);
+                    size_t value = va_arg(*ap, size_t);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
@@ -503,32 +505,32 @@ static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer,
         case SPECIFIER_UNSIGNED_HEX: {
             switch (fspec->length) {
                 case LENGTH_NONE: {
-                    unsigned int value = va_arg(ap, unsigned int);
+                    unsigned int value = va_arg(*ap, unsigned int);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_HH: {
-                    unsigned char value = (unsigned char) va_arg(ap, int);
+                    unsigned char value = (unsigned char) va_arg(*ap, int);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_H: {
-                    unsigned short value = (unsigned short) va_arg(ap, int);
+                    unsigned short value = (unsigned short) va_arg(*ap, int);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_L: {
-                    unsigned long value = va_arg(ap, unsigned long);
+                    unsigned long value = va_arg(*ap, unsigned long);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_LL: {
-                    unsigned long long value = va_arg(ap, unsigned long long);
+                    unsigned long long value = va_arg(*ap, unsigned long long);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
                 case LENGTH_Z: {
-                    size_t value = va_arg(ap, size_t);
+                    size_t value = va_arg(*ap, size_t);
                     ret = buffer_write(buffer, &value, sizeof(value));
                     break;
                 }
@@ -536,12 +538,12 @@ static bool_t fspec_pack(const struct fspec *fspec, struct write_buffer *buffer,
             break;
         }
         case SPECIFIER_POINTER: {
-            uintptr_t value = (uintptr_t) va_arg(ap, void*);
+            uintptr_t value = (uintptr_t) va_arg(*ap, void*);
             ret = buffer_write(buffer, &value, sizeof(value));
             break;
         }
         case SPECIFIER_STRING: {
-            const char *value = va_arg(ap, const char*);
+            const char *value = va_arg(*ap, const char*);
             ret = buffer_write(buffer, &value, sizeof(value));
             break;
         }

@@ -8,7 +8,12 @@
 #define LOG_BUFFER_SIZE          1024
 #define LOG_WORK_PRIORITY        10
 #define LOG_MAX_MSG_DATA_SIZE    64
+
+#ifdef BUILD_FIRMWARE
 #define LOG_NEWLINE              "\r\n"
+#else
+#define LOG_NEWLINE              "\n"
+#endif
 
 struct log_buffer {
     uint8_t data[LOG_BUFFER_SIZE];
@@ -30,10 +35,11 @@ struct log_message_header {
 } __attribute__((packed));
 
 static void log_output_handler(struct work *work);
+static bool_t log_process(void);
 
 static void ring_buffer_put(const void *data, size_t length);
 static size_t ring_buffer_get(void *data);
-static uint32_t ring_buffer_read_dropped();
+static uint32_t ring_buffer_read_dropped(void);
 
 static const char *log_level_str(enum log_level level);
 
@@ -54,6 +60,13 @@ void log_set_level(const char *module_name, enum log_level level)
     // update log level
     if (module != NULL) {
         module->level = level;
+    }
+}
+
+void log_panic()
+{
+    while (log_process()) {
+        // process all log messages
     }
 }
 
@@ -90,12 +103,25 @@ void __log_module_register(struct log_module *module)
 }
 
 /**
- * Work handler which tries to get a message from the ring buffer and processes it.
- * If a message was processed, the log output work item is resubmitted until there are no more messages.
+ * Work handler which processes one log message from the ring buffer.
+ * If a message was processed, the work item is resubmitted until there are no more messages.
  *
  * @param work Work item.
  */
 static void log_output_handler(struct work *work)
+{
+    if (log_process()) {
+        // resubmit work until there are no more log messages
+        work_submit(work);
+    }
+}
+
+/**
+ * Processes one log message from the ring buffer.
+ *
+ * @return True if a message has been processed, false if the ring buffer was empty.
+ */
+bool_t log_process(void)
 {
     // print number of dropped messages if any
     uint32_t dropped = ring_buffer_read_dropped();
@@ -110,7 +136,7 @@ static void log_output_handler(struct work *work)
 
     if (length < sizeof(struct log_message_header)) {
         // length should always be zero here
-        return;
+        return false;
     }
 
     struct log_message_header header;
@@ -142,8 +168,7 @@ static void log_output_handler(struct work *work)
         LOG_NEWLINE
     );
 
-    // resubmit work until there are no more log messages
-    work_submit(work);
+    return true;
 }
 
 /**
@@ -238,7 +263,7 @@ static size_t ring_buffer_get(void *data)
  *
  * @return Counter value.
  */
-static uint32_t ring_buffer_read_dropped()
+static uint32_t ring_buffer_read_dropped(void)
 {
     system_critical_section_enter();
 

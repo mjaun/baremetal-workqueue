@@ -13,7 +13,7 @@ extern "C" {
  * `system_critical_section_exit()` is called the same amount of times as
  * `system_critical_section_enter()`.
  */
-void system_critical_section_enter();
+void system_critical_section_enter(void);
 
 /**
  * Globally enables interrupts.
@@ -22,7 +22,7 @@ void system_critical_section_enter();
  * `system_critical_section_exit()` is called the same amount of times as
  * `system_critical_section_enter()`.
  */
-void system_critical_section_exit();
+void system_critical_section_exit(void);
 
 /**
  * Schedules a timer interrupt after the specified time.
@@ -49,7 +49,7 @@ bool_t system_schedule_wakeup(u64_us_t timeout);
  *
  * A time based wake-up can be scheduled using `system_schedule_wakeup()`.
  */
-void system_enter_sleep_mode();
+void system_enter_sleep_mode(void);
 
 /**
  * Returns the system up-time in microseconds.
@@ -59,12 +59,19 @@ void system_enter_sleep_mode();
  *
  * @return System up-time in microseconds.
  */
-u64_us_t system_uptime_get();
+u64_us_t system_uptime_get(void);
 
 /**
  * Output a character on debug interface.
  */
 void system_debug_out(char c);
+
+/**
+ * Called if an unrecoverable error occurred.
+ *
+ * The implementation should use `log_panic` to output any pending log messages and then halt/quit the application.
+ */
+void system_fatal_error(void);
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,7 @@
 #include "service/system_sim.h"
+#include "service/log.h"
 #include <unistd.h>
+#include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
 
@@ -48,6 +50,12 @@ u64_us_t system_uptime_get(void)
 void system_debug_out(char c)
 {
     putchar(c);
+}
+
+void system_fatal_error(void)
+{
+    log_panic();
+    exit(1);
 }
 
 static u64_us_t clock_raw_get(void)

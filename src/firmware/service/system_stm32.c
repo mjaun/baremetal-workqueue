@@ -1,4 +1,5 @@
 #include "service/system.h"
+#include "service/log.h"
 #include <stm32f4xx_hal.h>
 #include <main.h>
 
@@ -79,6 +80,17 @@ void system_enter_sleep_mode(void)
 void system_debug_out(char c)
 {
     HAL_UART_Transmit(&huart2, (const uint8_t*) &c, 1, HAL_MAX_DELAY);
+}
+
+void system_fatal_error(void)
+{
+    log_panic();
+
+    __disable_irq();
+
+    while (true) {
+        // halt system
+    }
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)

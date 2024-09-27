@@ -27,6 +27,16 @@ function(app_sources)
     get_property(BUILD_APP GLOBAL PROPERTY BUILD_APP)
     if(BUILD_APP)
         target_sources(app PRIVATE ${ARGN})
+
+        foreach(SOURCE_FILE ${ARGN})
+            get_filename_component(SOURCE_NAME ${SOURCE_FILE} NAME)
+
+            set_property(
+                SOURCE ${SOURCE_FILE}
+                DIRECTORY ${CMAKE_SOURCE_DIR}
+                APPEND PROPERTY COMPILE_DEFINITIONS __FILENAME__=\"${SOURCE_NAME}\"
+            )
+        endforeach()
     endif()
 endfunction()
 
@@ -45,5 +55,15 @@ function(test_sources)
     if(BUILD_TESTS)
         get_property(NAME GLOBAL PROPERTY CURRENT_TEST)
         target_sources(test_${NAME} PRIVATE ${ARGN})
+
+        foreach(SOURCE_FILE ${ARGN})
+            get_filename_component(SOURCE_NAME ${SOURCE_FILE} NAME)
+
+            set_property(
+                SOURCE ${SOURCE_FILE}
+                DIRECTORY ${CMAKE_SOURCE_DIR}
+                APPEND PROPERTY COMPILE_DEFINITIONS __FILENAME__=\"${SOURCE_NAME}\"
+            )
+        endforeach()
     endif()
 endfunction()

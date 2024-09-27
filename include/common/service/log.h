@@ -77,6 +77,13 @@ struct log_module {
 void log_set_level(const char *module_name, enum log_level level);
 
 /**
+ * Immediately flush all pending log messages.
+ *
+ * If called from an ISRs, this might interfere with the log work item causing fragmented log output.
+ */
+void log_panic();
+
+/**
  * Creates a log message and writes it to the ring buffer.
  * Submits the log handler work item to process the message.
  *
