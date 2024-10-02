@@ -28,9 +28,9 @@ static void gpio_exti_handler(struct gpio_pin *pin)
 {
     ARG_UNUSED(pin);
 
-    u64_us_t start = system_uptime_us_get();
+    u64_us_t start = system_uptime_get_us();
     LOG_ERR("Button ISR: %04u %s!", 42, "argtest");
-    u64_us_t end = system_uptime_us_get();
+    u64_us_t end = system_uptime_get_us();
 
     work_submit(&high_prio);
 

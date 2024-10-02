@@ -59,7 +59,7 @@ void system_enter_sleep_mode(void);
  *
  * @return System up-time in milliseconds.
  */
-u64_ms_t system_uptime_ms_get(void);
+u64_ms_t system_uptime_get_ms(void);
 
 /**
  * Returns the system up-time.
@@ -69,7 +69,7 @@ u64_ms_t system_uptime_ms_get(void);
  *
  * @return System up-time in microseconds.
  */
-u64_us_t system_uptime_us_get(void);
+u64_us_t system_uptime_get_us(void);
 
 /**
  * Performs a busy sleep for the specified delay.

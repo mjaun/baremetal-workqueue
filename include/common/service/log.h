@@ -32,7 +32,7 @@ struct log_module {
         .level = DEFAULT_LOG_LEVEL, \
     }; \
     static void __attribute__((constructor)) __log_module_register_this(void) { \
-        __log_module_register(&__log_module); \
+        log_module_register(&__log_module); \
     } \
     static struct log_module __log_module \
 
@@ -42,7 +42,7 @@ struct log_module {
  * The macro takes printf style arguments. It is safe to use from ISRs.
  * The provided information is recorded and outputted later by the logging work item.
  */
-#define LOG_ERR(...) __log_message(&__log_module, LOG_LEVEL_ERR, __VA_ARGS__)
+#define LOG_ERR(...) log_message(&__log_module, LOG_LEVEL_ERR, __VA_ARGS__)
 
 /**
  * Logs a warning message.
@@ -50,7 +50,7 @@ struct log_module {
  * The macro takes printf style arguments. It is safe to use from ISRs.
  * The provided information is recorded and outputted later by the logging work item.
  */
-#define LOG_WRN(...) __log_message(&__log_module, LOG_LEVEL_WRN, __VA_ARGS__)
+#define LOG_WRN(...) log_message(&__log_module, LOG_LEVEL_WRN, __VA_ARGS__)
 
 /**
  * Logs an info message.
@@ -58,7 +58,7 @@ struct log_module {
  * The macro takes printf style arguments. It is safe to use from ISRs.
  * The provided information is recorded and outputted later by the logging work item.
  */
-#define LOG_INF(...) __log_message(&__log_module, LOG_LEVEL_INF, __VA_ARGS__)
+#define LOG_INF(...) log_message(&__log_module, LOG_LEVEL_INF, __VA_ARGS__)
 
 /**
  * Logs a debug message.
@@ -66,7 +66,7 @@ struct log_module {
  * The macro takes printf style arguments. It is safe to use from ISRs.
  * The provided information is recorded and outputted later by the logging work item.
  */
-#define LOG_DBG(...) __log_message(&__log_module, LOG_LEVEL_DBG, __VA_ARGS__)
+#define LOG_DBG(...) log_message(&__log_module, LOG_LEVEL_DBG, __VA_ARGS__)
 
 /**
  * Changes the log level for a module.
@@ -95,11 +95,11 @@ void log_panic();
  * @param format Format string.
  * @param ... Arguments for the format string.
  */
-void __log_message(const struct log_module *module, enum log_level level, const char *format, ...);
+void log_message(const struct log_module *module, enum log_level level, const char *format, ...);
 
 /**
  * Registers a new module.
  *
  * This function is intended for internal use by logging macros.
  */
-void __log_module_register(struct log_module *module);
+void log_module_register(struct log_module *module);

@@ -78,7 +78,7 @@ void work_submit(struct work *work)
 
 void work_schedule_after(struct work *work, u32_ms_t delay)
 {
-    work_schedule_at(work, system_uptime_ms_get() + delay);
+    work_schedule_at(work, system_uptime_get_ms() + delay);
 }
 
 void work_schedule_again(struct work *work, u32_ms_t delay)
@@ -119,7 +119,7 @@ void work_cancel(struct work *work)
  */
 static void submit_ready_work()
 {
-    u64_ms_t current_uptime = system_uptime_ms_get();
+    u64_ms_t current_uptime = system_uptime_get_ms();
 
     system_critical_section_enter();
 
@@ -191,7 +191,7 @@ static void sleep_until_ready()
     }
 
     if (scheduled_queue != NULL) {
-        u64_ms_t current_uptime = system_uptime_ms_get();
+        u64_ms_t current_uptime = system_uptime_get_ms();
 
         // don't go to sleep if there is ready work
         if (scheduled_queue->scheduled_uptime < current_uptime) {

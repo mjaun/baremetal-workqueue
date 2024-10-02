@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-void system_init(void);
+void system_setup(void);
 
 #ifdef __cplusplus
 }

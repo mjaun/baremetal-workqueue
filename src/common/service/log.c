@@ -27,7 +27,7 @@
  * The indices wrap around if the end of the buffer is reached.
  * If head == tail the buffer is empty. One byte must always left free otherwise this becomes ambigous.
  */
-struct log_buffer {
+struct ring_buffer {
     uint8_t data[LOG_BUFFER_SIZE]; ///< Actual data.
     size_t head; ///< Index of the ring buffer head.
     size_t tail; ///< Index of the ring buffer tail.
@@ -56,14 +56,14 @@ static uint32_t ring_buffer_read_dropped(void);
 static const char *log_level_str(enum log_level level);
 static const char *log_level_color(enum log_level level);
 
-static struct log_module *modules;
-static struct log_buffer ring_buffer;
+static struct log_module *module_list;
+static struct ring_buffer ring_buffer;
 
 WORK_DEFINE(log_output, LOG_WORK_PRIORITY, log_output_handler);
 
 void log_set_level(const char *module_name, enum log_level level)
 {
-    struct log_module *module = modules;
+    struct log_module *module = module_list;
 
     // find module
     while ((module != NULL) && (strcmp(module->name, module_name) != 0)) {
@@ -83,7 +83,7 @@ void log_panic()
     }
 }
 
-void __log_message(const struct log_module *module, enum log_level level, const char *format, ...)
+void log_message(const struct log_module *module, enum log_level level, const char *format, ...)
 {
     // early return if log level not enabled
     if (level > module->level) {
@@ -91,7 +91,7 @@ void __log_message(const struct log_module *module, enum log_level level, const 
     }
 
     struct log_message_header header = {
-        .timestamp = system_uptime_us_get(),
+        .timestamp = system_uptime_get_us(),
         .level = (uint8_t) level,
         .module = module,
     };
@@ -109,10 +109,10 @@ void __log_message(const struct log_module *module, enum log_level level, const 
     va_end(ap);
 }
 
-void __log_module_register(struct log_module *module)
+void log_module_register(struct log_module *module)
 {
-    module->next = modules;
-    modules = module;
+    module->next = module_list;
+    module_list = module;
 }
 
 /**

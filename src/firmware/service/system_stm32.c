@@ -28,7 +28,7 @@ void system_critical_section_exit(void)
     }
 }
 
-u64_us_t system_uptime_us_get(void)
+u64_us_t system_uptime_get_us(void)
 {
     system_critical_section_enter();
 
@@ -46,9 +46,23 @@ u64_us_t system_uptime_us_get(void)
     return ((u64_us_t) high32 << 32) | (u64_us_t) low32;
 }
 
-u64_ms_t system_uptime_ms_get(void)
+u64_ms_t system_uptime_get_ms(void)
 {
-    return system_uptime_us_get() / 1000;
+    return system_uptime_get_us() / 1000;
+}
+
+void system_busy_sleep_ms(u64_ms_t delay)
+{
+    system_busy_sleep_us(delay * 1000);
+}
+
+void system_busy_sleep_us(u64_us_t delay)
+{
+    u64_us_t until = system_uptime_get_us() + delay;
+
+    while (system_uptime_get_us() < until) {
+        // busy sleep
+    }
 }
 
 bool_t system_schedule_wakeup(u64_ms_t timeout)
