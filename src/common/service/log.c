@@ -11,10 +11,14 @@
 #define LOG_MAX_MSG_DATA_SIZE    64
 
 #ifdef BUILD_FIRMWARE
-#define LOG_NEWLINE              "\r\n"
+#define NEWLINE                  "\r\n"
 #else
-#define LOG_NEWLINE              "\n"
+#define NEWLINE                  "\n"
 #endif
+
+#define ANSI_BOLD_RED            "\x1B[1;31m"
+#define ANSI_BOLD_YELLOW         "\x1B[1;33m"
+#define ANSI_RESET               "\x1B[0m"
 
 /**
  * Ring buffer for log data.
@@ -50,6 +54,7 @@ static size_t ring_buffer_get(void *data);
 static uint32_t ring_buffer_read_dropped(void);
 
 static const char *log_level_str(enum log_level level);
+static const char *log_level_color(enum log_level level);
 
 static struct log_module *modules;
 static struct log_buffer ring_buffer;
@@ -135,7 +140,7 @@ bool_t log_process(void)
     uint32_t dropped = ring_buffer_read_dropped();
 
     if (dropped > 0) {
-        cbprintf(system_debug_out, "<%u messages dropped>" LOG_NEWLINE, (unsigned) dropped);
+        cbprintf(system_debug_out, ANSI_BOLD_RED "--- %u messages dropped ---" ANSI_RESET NEWLINE, (unsigned) dropped);
     }
 
     // process one log message
@@ -155,12 +160,13 @@ bool_t log_process(void)
 
     cbprintf(
         system_debug_out,
-        "[%02u:%02u:%02u.%03u,%03u] <%s> %s: ",
+        "[%02u:%02u:%02u.%03u,%03u] %s<%s> %s: ",
         (unsigned) (timestamp_s / 3600),
         (unsigned) (timestamp_s / 60 % 60),
         (unsigned) (timestamp_s % 60),
         (unsigned) (timestamp_us / 1000),
         (unsigned) (timestamp_us % 1000),
+        log_level_color((enum log_level) header.level),
         log_level_str((enum log_level) header.level),
         header.module->name
     );
@@ -173,7 +179,7 @@ bool_t log_process(void)
 
     cbprintf(
         system_debug_out,
-        LOG_NEWLINE
+        ANSI_RESET NEWLINE
     );
 
     return true;
@@ -290,6 +296,23 @@ static const char *log_level_str(enum log_level level)
         case LOG_LEVEL_WRN: return "wrn";
         case LOG_LEVEL_INF: return "inf";
         case LOG_LEVEL_DBG: return "dbg";
-        default: return "?";
+        default: return "";
+    }
+}
+
+/**
+ * Get the ANSI escape code for coloring the given log level.
+ *
+ * @param level Log level.
+ * @return ANSI escape code.
+ */
+static const char *log_level_color(enum log_level level)
+{
+    switch (level) {
+        case LOG_LEVEL_ERR: return ANSI_BOLD_RED;
+        case LOG_LEVEL_WRN: return ANSI_BOLD_YELLOW;
+        case LOG_LEVEL_INF: return "";
+        case LOG_LEVEL_DBG: return "";
+        default: return "";
     }
 }

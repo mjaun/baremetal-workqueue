@@ -29,7 +29,7 @@ static void exti_handler(struct gpio_pin *pin)
     ARG_UNUSED(pin);
 
     u64_us_t start = system_uptime_get();
-    LOG_INF("Button ISR: %04u %s!", 42, "argtest");
+    LOG_ERR("Button ISR: %04u %s!", 42, "argtest");
     u64_us_t end = system_uptime_get();
 
     work_submit(&high_prio);
@@ -41,14 +41,14 @@ void high_prio_handler(struct work *work)
 {
     ARG_UNUSED(work);
 
-    LOG_ERR("HIGH start");
+    LOG_WRN("HIGH start");
 
-    u64_us_t end = system_uptime_get() + 200000ULL;
+    u64_us_t end = system_uptime_get() + 500000ULL;
     while (system_uptime_get() < end) {
         // busy sleep
     }
 
-    LOG_ERR("HIGH done");
+    LOG_WRN("HIGH done");
 }
 
 void low_prio_handler(struct work *work)
@@ -57,12 +57,12 @@ void low_prio_handler(struct work *work)
 
     work_schedule_again(&low_prio, 2000);
 
-    LOG_WRN("LOW start");
+    LOG_INF("LOW start");
 
     u64_us_t end = system_uptime_get() + 1000000ULL;
     while (system_uptime_get() < end) {
         // busy sleep
     }
 
-    LOG_WRN("LOW done");
+    LOG_INF("LOW done");
 }
