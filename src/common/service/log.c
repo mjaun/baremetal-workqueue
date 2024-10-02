@@ -91,7 +91,7 @@ void __log_message(const struct log_module *module, enum log_level level, const 
     }
 
     struct log_message_header header = {
-        .timestamp = system_uptime_get(),
+        .timestamp = system_uptime_us_get(),
         .level = (uint8_t) level,
         .module = module,
     };

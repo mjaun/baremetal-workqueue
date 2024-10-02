@@ -12,7 +12,7 @@ static void submit_ready_work();
 static void sleep_until_ready();
 
 static void submit_add_locked(struct work **queue, struct work *work);
-static void schedule_add_locked(struct work *work, uint64_t scheduled_uptime);
+static void schedule_add_locked(struct work *work, u64_ms_t scheduled_uptime);
 static void remove_locked(struct work **queue, struct work *work, uint32_t flags_to_clear);
 
 static void set_flags(struct work *work, uint32_t flags);
@@ -78,15 +78,15 @@ void work_submit(struct work *work)
 
 void work_schedule_after(struct work *work, u32_ms_t delay)
 {
-    work_schedule_at(work, system_uptime_get() + (delay * 1000ULL));
+    work_schedule_at(work, system_uptime_ms_get() + delay);
 }
 
 void work_schedule_again(struct work *work, u32_ms_t delay)
 {
-    work_schedule_at(work, work->scheduled_uptime + (delay * 1000ULL));
+    work_schedule_at(work, work->scheduled_uptime + delay);
 }
 
-void work_schedule_at(struct work *work, u64_us_t uptime)
+void work_schedule_at(struct work *work, u64_ms_t uptime)
 {
     RUNTIME_ASSERT(work->priority >= 0);  // scheduling for high prio items not supported
 
@@ -119,7 +119,7 @@ void work_cancel(struct work *work)
  */
 static void submit_ready_work()
 {
-    uint64_t current_uptime = system_uptime_get();
+    u64_ms_t current_uptime = system_uptime_ms_get();
 
     system_critical_section_enter();
 
@@ -191,7 +191,7 @@ static void sleep_until_ready()
     }
 
     if (scheduled_queue != NULL) {
-        u64_us_t current_uptime = system_uptime_get();
+        u64_ms_t current_uptime = system_uptime_ms_get();
 
         // don't go to sleep if there is ready work
         if (scheduled_queue->scheduled_uptime < current_uptime) {
@@ -199,7 +199,7 @@ static void sleep_until_ready()
             return;
         }
 
-        u64_us_t wakeup_timeout = scheduled_queue->scheduled_uptime - current_uptime;
+        u64_ms_t wakeup_timeout = scheduled_queue->scheduled_uptime - current_uptime;
 
         // don't go to sleep if wake-up cannot be scheduled (timeout too short)
         if (!system_schedule_wakeup(wakeup_timeout)) {
@@ -219,7 +219,8 @@ static void sleep_until_ready()
  * Item must not be scheduled or submitted.
  * Interrupts must be locked.
  *
- * @param work Item to add.
+ * @param queue Queue to add the item to.
+ * @param work Work item to add.
  */
 static void submit_add_locked(struct work **queue, struct work *work)
 {
@@ -256,7 +257,7 @@ static void submit_add_locked(struct work **queue, struct work *work)
  * @param work Item to add.
  * @param scheduled_uptime Uptime at which the item shall be scheduled.
  */
-static void schedule_add_locked(struct work *work, uint64_t scheduled_uptime)
+static void schedule_add_locked(struct work *work, u64_ms_t scheduled_uptime)
 {
     struct work *previous = NULL;
     struct work *next = scheduled_queue;

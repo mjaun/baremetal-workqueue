@@ -38,7 +38,7 @@ void system_critical_section_exit(void);
  * @param timeout Timeout after which the interrupt shall occur.
  * @return True, if the wake-up has been scheduled. False, if the timeout is too small to schedule.
  */
-bool_t system_schedule_wakeup(u64_us_t timeout);
+bool_t system_schedule_wakeup(u64_ms_t timeout);
 
 /**
  * Causes the CPU to enter sleep mode until an interrupt occurs.
@@ -52,6 +52,16 @@ bool_t system_schedule_wakeup(u64_us_t timeout);
 void system_enter_sleep_mode(void);
 
 /**
+ * Returns the system up-time in milliseconds.
+ *
+ * The up-time timer is started after peripherals have been initialized before calling into
+ * the `application_main()` function.
+ *
+ * @return System up-time in milliseconds.
+ */
+u64_ms_t system_uptime_ms_get(void);
+
+/**
  * Returns the system up-time in microseconds.
  *
  * The up-time timer is started after peripherals have been initialized before calling into
@@ -59,7 +69,7 @@ void system_enter_sleep_mode(void);
  *
  * @return System up-time in microseconds.
  */
-u64_us_t system_uptime_get(void);
+u64_us_t system_uptime_us_get(void);
 
 /**
  * Output a character on debug interface.

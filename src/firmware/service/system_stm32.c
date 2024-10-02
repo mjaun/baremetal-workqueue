@@ -28,7 +28,7 @@ void system_critical_section_exit(void)
     }
 }
 
-u64_us_t system_uptime_get(void)
+u64_us_t system_uptime_us_get(void)
 {
     system_critical_section_enter();
 
@@ -46,9 +46,14 @@ u64_us_t system_uptime_get(void)
     return ((u64_us_t) high32 << 32) | (u64_us_t) low32;
 }
 
-bool_t system_schedule_wakeup(u64_us_t timeout)
+u64_ms_t system_uptime_ms_get(void)
 {
-    uint64_t timer_period = timeout / 100;
+    return system_uptime_us_get() / 1000;
+}
+
+bool_t system_schedule_wakeup(u64_ms_t timeout)
+{
+    uint64_t timer_period = timeout * 10;
 
     // timeout needs to be at least 2 cycles
     if (timer_period < 2) {

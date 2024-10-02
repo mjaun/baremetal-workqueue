@@ -19,7 +19,7 @@ enum work_flags {
 struct work {
     work_handler_t handler;
     int32_t priority;
-    u64_us_t scheduled_uptime;
+    u64_ms_t scheduled_uptime;
     uint32_t flags;
     struct work *next;
 };
@@ -102,9 +102,9 @@ void work_schedule_again(struct work *work, u32_ms_t delay);
  * This function is safe to be called from ISRs.
  *
  * @param work Item to schedule.
- * @param uptime Delay in milliseconds.
+ * @param uptime Uptime in milliseconds.
  */
-void work_schedule_at(struct work *work, u64_us_t uptime);
+void work_schedule_at(struct work *work, u64_ms_t uptime);
 
 /**
  * Removes an item from the submitted or scheduled queue.
