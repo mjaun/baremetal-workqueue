@@ -58,7 +58,7 @@
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 /* USER CODE BEGIN EV */
-
+extern EXTI_HandleTypeDef hexti0;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -242,5 +242,10 @@ void EXTI15_10_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+
+void EXTI0_IRQHandler(void)
+{
+    HAL_EXTI_IRQHandler(&hexti0);
+}
 
 /* USER CODE END 1 */

@@ -73,6 +73,10 @@ void system_debug_out(char c);
  */
 void system_fatal_error(void);
 
+void system_softirq_trigger(void);
+
+void system_softirq_handler(void);
+
 #ifdef __cplusplus
 }
 #endif

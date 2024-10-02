@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "application/application_startup.h"
+#include "service/system.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,7 +47,7 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+EXTI_HandleTypeDef hexti0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -97,6 +98,17 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+
+  // configure software interrupt, seems like STM32CubeMX only supports EXTI with GPIO
+  EXTI_ConfigTypeDef EXTI_ConfigStruct = {0};
+  EXTI_ConfigStruct.Line = 0;
+  EXTI_ConfigStruct.Mode = EXTI_MODE_INTERRUPT;
+  EXTI_ConfigStruct.Trigger = EXTI_TRIGGER_NONE;
+  HAL_EXTI_SetConfigLine(&hexti0, &EXTI_ConfigStruct);
+  HAL_EXTI_RegisterCallback(&hexti0, HAL_EXTI_COMMON_CB_ID, system_softirq_handler);
+
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 15, 15);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
   // enable uptime timer
   __HAL_TIM_CLEAR_IT(&htim2, TIM_IT_UPDATE);

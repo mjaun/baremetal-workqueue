@@ -8,6 +8,8 @@ extern TIM_HandleTypeDef htim3;  ///< 16 bit timer for wakeup (10 kHz clock)
 
 extern UART_HandleTypeDef huart2;
 
+extern EXTI_HandleTypeDef hexti0;
+
 static uint32_t uptime_high32 = 0;
 static uint32_t critical_section_depth = 0;
 
@@ -93,6 +95,16 @@ void system_fatal_error(void)
     }
 }
 
+void system_softirq_trigger(void)
+{
+    HAL_EXTI_GenerateSWI(&hexti0);
+}
+
+__attribute__((weak)) void system_softirq_handler(void)
+{
+    // supposed to be overridden, do nothing
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim == &htim2) {
@@ -105,4 +117,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         __HAL_TIM_DISABLE(&htim3);
         __HAL_TIM_DISABLE_IT(&htim3, TIM_IT_UPDATE);
     }
+}
+
+void HAL_EXTI_PendingCallback()
+{
+
 }

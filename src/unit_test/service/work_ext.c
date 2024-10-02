@@ -14,5 +14,5 @@ void work_run_for(u32_ms_t timeout)
 static void exit_request_handler(struct work *work)
 {
     ARG_UNUSED(work);
-    work_exit_request();
+    work_stop();
 }

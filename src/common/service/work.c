@@ -1,15 +1,17 @@
 #include "service/work.h"
 #include "service/system.h"
+#include "service/assert.h"
 
-static bool_t work_exit_requested = false;
-static struct work *submitted_queue = NULL;
+static volatile bool_t work_stopped = true;
+static struct work *high_prio_queue = NULL;
+static struct work *low_prio_queue = NULL;
 static struct work *scheduled_queue = NULL;
 
-static void process_next_work();
+static bool_t process_next_work(struct work **queue);
 static void submit_ready_work();
 static void sleep_until_ready();
 
-static void submit_add_locked(struct work *work);
+static void submit_add_locked(struct work **queue, struct work *work);
 static void schedule_add_locked(struct work *work, uint64_t scheduled_uptime);
 static void remove_locked(struct work **queue, struct work *work, uint32_t flags_to_clear);
 
@@ -19,18 +21,34 @@ static bool_t test_flags_any(struct work *work, uint32_t flags);
 
 void work_run(void)
 {
-    work_exit_requested = false;
+    work_stopped = false;
 
-    while (!work_exit_requested) {
-        sleep_until_ready();
+    // trigger softirq in case there is already high prio work
+    system_softirq_trigger();
+
+    // process low prio queue and scheduled work
+    while (!work_stopped) {
         submit_ready_work();
-        process_next_work();
+
+        if (!process_next_work(&low_prio_queue)) {
+            sleep_until_ready();
+        }
     }
 }
 
-void work_exit_request(void)
+void system_softirq_handler(void)
 {
-    work_exit_requested = true;
+    // process high prio queue
+    while (!work_stopped) {
+        if (!process_next_work(&high_prio_queue)) {
+            break;
+        }
+    }
+}
+
+void work_stop(void)
+{
+    work_stopped = true;
 }
 
 void work_submit(struct work *work)
@@ -48,7 +66,12 @@ void work_submit(struct work *work)
         remove_locked(&scheduled_queue, work, WORK_ITEM_SCHEDULED);
     }
 
-    submit_add_locked(work);
+    if (work->priority >= 0) {
+        submit_add_locked(&low_prio_queue, work);
+    } else {
+        submit_add_locked(&high_prio_queue, work);
+        system_softirq_trigger();
+    }
 
     system_critical_section_exit();
 }
@@ -65,6 +88,8 @@ void work_schedule_again(struct work *work, u32_ms_t delay)
 
 void work_schedule_at(struct work *work, u64_us_t uptime)
 {
+    RUNTIME_ASSERT(work->priority >= 0);  // scheduling for high prio items not supported
+
     system_critical_section_enter();
 
     if (!test_flags_any(work, WORK_ITEM_SCHEDULED | WORK_ITEM_SUBMITTED)) {
@@ -83,7 +108,7 @@ void work_cancel(struct work *work)
     }
 
     if (!test_flags_any(work, WORK_ITEM_SUBMITTED)) {
-        remove_locked(&submitted_queue, work, WORK_ITEM_SUBMITTED);
+        remove_locked(&low_prio_queue, work, WORK_ITEM_SUBMITTED);
     }
 
     system_critical_section_exit();
@@ -92,7 +117,7 @@ void work_cancel(struct work *work)
 /**
  * Submits all work items from the scheduled queue which are ready.
  */
-void submit_ready_work()
+static void submit_ready_work()
 {
     uint64_t current_uptime = system_uptime_get();
 
@@ -107,7 +132,7 @@ void submit_ready_work()
         clear_flags(work, WORK_ITEM_SCHEDULED);
         work->next = NULL;
 
-        submit_add_locked(work);
+        submit_add_locked(&low_prio_queue, work);
 
         work = next;
     }
@@ -121,19 +146,19 @@ void submit_ready_work()
 /**
  * Processes the first queued item, if any.
  */
-void process_next_work()
+static bool_t process_next_work(struct work **queue)
 {
     // remove first item from queue and update state
     system_critical_section_enter();
 
-    struct work *work = submitted_queue;
+    struct work *work = *queue;
 
     if (work == NULL) {
         system_critical_section_exit();
-        return;
+        return false;
     }
 
-    submitted_queue = work->next;
+    *queue = work->next;
 
     clear_flags(work, WORK_ITEM_SUBMITTED);
     set_flags(work, WORK_ITEM_RUNNING);
@@ -146,21 +171,21 @@ void process_next_work()
 
     // update state
     system_critical_section_enter();
-
     clear_flags(work, WORK_ITEM_RUNNING);
-
     system_critical_section_exit();
+
+    return true;
 }
 
 /**
  * Enters sleep mode until the next scheduled work item becomes ready.
  */
-void sleep_until_ready()
+static void sleep_until_ready()
 {
     system_critical_section_enter();
 
     // don't go to sleep if there is still submitted work
-    if (submitted_queue != NULL) {
+    if (low_prio_queue != NULL) {
         system_critical_section_exit();
         return;
     }
@@ -196,10 +221,10 @@ void sleep_until_ready()
  *
  * @param work Item to add.
  */
-void submit_add_locked(struct work *work)
+static void submit_add_locked(struct work **queue, struct work *work)
 {
     struct work *previous = NULL;
-    struct work *next = submitted_queue;
+    struct work *next = *queue;
 
     // find correct position
     while (next != NULL) {
@@ -215,7 +240,7 @@ void submit_add_locked(struct work *work)
     if (previous != NULL) {
         previous->next = work;
     } else {
-        submitted_queue = work;
+        *queue = work;
     }
 
     set_flags(work, WORK_ITEM_SUBMITTED);
@@ -231,7 +256,7 @@ void submit_add_locked(struct work *work)
  * @param work Item to add.
  * @param scheduled_uptime Uptime at which the item shall be scheduled.
  */
-void schedule_add_locked(struct work *work, uint64_t scheduled_uptime)
+static void schedule_add_locked(struct work *work, uint64_t scheduled_uptime)
 {
     struct work *previous = NULL;
     struct work *next = scheduled_queue;
@@ -267,7 +292,7 @@ void schedule_add_locked(struct work *work, uint64_t scheduled_uptime)
  * @param work Work item to remove.
  * @param flags_to_clear Flags to clear on the work item if removed.
  */
-void remove_locked(struct work **queue, struct work *work, uint32_t flags_to_clear)
+static void remove_locked(struct work **queue, struct work *work, uint32_t flags_to_clear)
 {
     struct work *previous = NULL;
     struct work *next = *queue;
@@ -297,7 +322,7 @@ void remove_locked(struct work **queue, struct work *work, uint32_t flags_to_cle
  * @param work Work item.
  * @param flags Flags to set.
  */
-void set_flags(struct work *work, uint32_t flags)
+static void set_flags(struct work *work, uint32_t flags)
 {
     work->flags |= flags;
 }
@@ -308,7 +333,7 @@ void set_flags(struct work *work, uint32_t flags)
  * @param work Work item.
  * @param flags Flags to set.
  */
-void clear_flags(struct work *work, uint32_t flags)
+static void clear_flags(struct work *work, uint32_t flags)
 {
     work->flags &= ~flags;
 }
@@ -320,7 +345,7 @@ void clear_flags(struct work *work, uint32_t flags)
  * @param flags Flags to check.
  * @return True, if any of the flags is set. False, otherwise.
  */
-bool_t test_flags_any(struct work *work, uint32_t flags)
+static bool_t test_flags_any(struct work *work, uint32_t flags)
 {
     return (work->flags & flags) != 0;
 }

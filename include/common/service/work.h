@@ -18,7 +18,7 @@ enum work_flags {
 
 struct work {
     work_handler_t handler;
-    uint32_t priority;
+    int32_t priority;
     u64_us_t scheduled_uptime;
     uint32_t flags;
     struct work *next;
@@ -47,7 +47,7 @@ void work_run(void);
  *
  * This function is supposed to be used for unit testing purposes only.
  */
-void work_exit_request(void);
+void work_stop(void);
 
 /**
  * Submits an item for execution.

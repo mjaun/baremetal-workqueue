@@ -1,9 +1,7 @@
 app_include_directories(${CMAKE_SOURCE_DIR}/include/common)
 
 app_sources(
-    application/application_startup.c
-    application/uptime_printer.c
-    application/button_handler.c
+    application/application_main.c
     service/work.c
     service/log.c
     service/cbprintf.c
