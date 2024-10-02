@@ -8,7 +8,7 @@
 
 LOG_MODULE_REGISTER(application_main);
 
-static void exti_handler(struct gpio_pin *pin);
+static void gpio_exti_handler(struct gpio_pin *pin);
 static void high_prio_handler(struct work *work);
 static void low_prio_handler(struct work *work);
 
@@ -17,14 +17,14 @@ WORK_DEFINE(low_prio, 5, low_prio_handler);
 
 void application_main(void)
 {
-    gpio_exti_callback(peripherals.user_button, exti_handler);
+    gpio_exti_callback(peripherals.user_button, gpio_exti_handler);
 
     work_submit(&low_prio);
 
     work_run();
 }
 
-static void exti_handler(struct gpio_pin *pin)
+static void gpio_exti_handler(struct gpio_pin *pin)
 {
     ARG_UNUSED(pin);
 
@@ -42,12 +42,7 @@ void high_prio_handler(struct work *work)
     ARG_UNUSED(work);
 
     LOG_WRN("HIGH start");
-
-    u64_ms_t end = system_uptime_ms_get() + 500;
-    while (system_uptime_ms_get() < end) {
-        // busy sleep
-    }
-
+    system_busy_sleep_ms(500);
     LOG_WRN("HIGH done");
 }
 
@@ -58,11 +53,6 @@ void low_prio_handler(struct work *work)
     work_schedule_again(&low_prio, 2000);
 
     LOG_INF("LOW start");
-
-    u64_us_t end = system_uptime_ms_get() + 1000;
-    while (system_uptime_ms_get() < end) {
-        // busy sleep
-    }
-
+    system_busy_sleep_ms(1000);
     LOG_INF("LOW done");
 }

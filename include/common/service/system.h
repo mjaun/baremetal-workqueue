@@ -52,7 +52,7 @@ bool_t system_schedule_wakeup(u64_ms_t timeout);
 void system_enter_sleep_mode(void);
 
 /**
- * Returns the system up-time in milliseconds.
+ * Returns the system up-time.
  *
  * The up-time timer is started after peripherals have been initialized before calling into
  * the `application_main()` function.
@@ -62,7 +62,7 @@ void system_enter_sleep_mode(void);
 u64_ms_t system_uptime_ms_get(void);
 
 /**
- * Returns the system up-time in microseconds.
+ * Returns the system up-time.
  *
  * The up-time timer is started after peripherals have been initialized before calling into
  * the `application_main()` function.
@@ -70,6 +70,20 @@ u64_ms_t system_uptime_ms_get(void);
  * @return System up-time in microseconds.
  */
 u64_us_t system_uptime_us_get(void);
+
+/**
+ * Performs a busy sleep for the specified delay.
+ *
+ * @param delay Delay in milliseconds.
+ */
+void system_busy_sleep_ms(u64_ms_t delay);
+
+/**
+ * Performs a busy sleep for the specified delay.
+ *
+ * @param delay Delay in microseconds.
+ */
+void system_busy_sleep_us(u64_us_t delay);
 
 /**
  * Output a character on debug interface.
