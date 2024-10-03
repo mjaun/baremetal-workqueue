@@ -171,3 +171,86 @@ TEST(work, schedule_self)
     work_run_for(500);
     fake_work::check(work, work, work, work, work);
 }
+
+TEST(work, cancel_scheduled)
+{
+    auto test_start = system_uptime_get_ms();
+
+    fake_work work2(0);
+    fake_work work3(0);
+    fake_work work1(0, [&] {
+        work_cancel(work2.get());
+    });
+
+    work_schedule_after(work3.get(), 3000);
+    work_schedule_after(work1.get(), 1000);
+    work_schedule_after(work2.get(), 2000);
+
+    fake_work::check();
+    work_run_for(5000);
+    fake_work::check(work1, work3);
+
+    CHECK_EQUAL(work1.last_execution(), test_start + 1000);
+    CHECK_EQUAL(work3.last_execution(), test_start + 3000);
+}
+
+TEST(work, cancel_submitted)
+{
+    fake_work work2(2);
+    fake_work work3(3);
+    fake_work work1(1, [&] {
+        work_cancel(work2.get());
+    });
+
+    work_submit(work1.get());
+    work_submit(work2.get());
+    work_submit(work3.get());
+
+    work_run_for(0);
+    fake_work::check(work1, work3);
+}
+
+TEST(work, submit_while_scheduled)
+{
+    auto test_start = system_uptime_get_ms();
+
+    fake_work work(0);
+
+    work_schedule_after(work.get(), 500);
+    work_submit(work.get());
+
+    work_run_for(1000);
+    fake_work::check(work);  // executed only once
+    CHECK_EQUAL(test_start, work.last_execution());  // submitted immediately
+}
+
+TEST(work, submit_while_submitted)
+{
+    fake_work work1(0);
+    fake_work work2(0);
+    fake_work work3(0);
+
+    work_submit(work1.get());
+    work_submit(work2.get());
+    work_submit(work3.get());
+
+    work_submit(work2.get());  // submit again
+
+    work_run_for(0);
+
+    fake_work::check(work1, work2, work3);  // executed only once, order does not change
+}
+
+TEST(work, schedule_while_scheduled)
+{
+    auto test_start = system_uptime_get_ms();
+
+    fake_work work(0);
+
+    work_schedule_at(work.get(), test_start + 500);
+    work_schedule_at(work.get(), test_start + 100);  // schedule again
+
+    work_run_for(1000);
+    fake_work::check(work);  // executed only once
+    CHECK_EQUAL(test_start + 500, work.last_execution());  // first schedule wins, even if second is sooner
+}

@@ -3,11 +3,6 @@ project(baremetal_workqueue)
 
 enable_language(C ASM)
 
-if(BUILD_TARGET STREQUAL "unit_test")
-    enable_language(CXX)
-    enable_testing()
-endif()
-
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXECUTABLE_SUFFIX ".elf")
@@ -16,6 +11,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-Wall -Wextra -Wpedantic)
 add_compile_options(-fmacro-prefix-map=${CMAKE_SOURCE_DIR}=PROJECT_ROOT)
 add_compile_options(-fstack-usage)  # for puncover
+
+if(BUILD_TARGET STREQUAL "unit_test")
+    enable_language(CXX)
+    enable_testing()
+
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+endif()
 
 include(cmake/extensions.cmake)
 

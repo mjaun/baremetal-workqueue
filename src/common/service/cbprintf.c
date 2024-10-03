@@ -649,6 +649,11 @@ static enum parse_state parse_fspec(struct fspec *fspec, char c)
             state = PARSE_STATE_FSPEC_COMPLETE;
             break;
         }
+        case '%': {
+            fspec->specifier = SPECIFIER_ESCAPE_PERCENT;
+            state = PARSE_STATE_FSPEC_COMPLETE;
+            break;
+        }
         default: {
             state = PARSE_STATE_FSPEC_ERROR;
             break;

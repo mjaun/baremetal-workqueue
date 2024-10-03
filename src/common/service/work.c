@@ -99,12 +99,16 @@ void work_cancel(struct work *work)
 {
     system_critical_section_enter();
 
-    if (!test_flags_any(work, WORK_ITEM_SCHEDULED)) {
+    if (test_flags_any(work, WORK_ITEM_SCHEDULED)) {
         remove_locked(&scheduled_queue, work, WORK_ITEM_SCHEDULED);
     }
 
-    if (!test_flags_any(work, WORK_ITEM_SUBMITTED)) {
-        remove_locked(&low_prio_queue, work, WORK_ITEM_SUBMITTED);
+    if (test_flags_any(work, WORK_ITEM_SUBMITTED)) {
+        if (work->priority >= 0) {
+            remove_locked(&low_prio_queue, work, WORK_ITEM_SUBMITTED);
+        } else {
+            remove_locked(&high_prio_queue, work, WORK_ITEM_SUBMITTED);
+        }
     }
 
     system_critical_section_exit();

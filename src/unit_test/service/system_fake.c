@@ -1,6 +1,6 @@
+#include <service/assert.h>
 #include <service/system.h>
 #include <service/unit_test.h>
-#include <util/unused.h>
 
 static bool soft_irq_triggered;
 static u64_us_t uptime_counter;
@@ -16,9 +16,9 @@ void system_critical_section_exit(void)
     // do nothing
 }
 
-bool_t system_schedule_wakeup(u64_us_t timeout)
+bool_t system_schedule_wakeup(u64_ms_t timeout)
 {
-    scheduled_wakeup = uptime_counter + timeout;
+    scheduled_wakeup = uptime_counter + (timeout * 1000);
     return true;
 }
 
@@ -29,6 +29,7 @@ void system_enter_sleep_mode(void)
         system_softirq_handler();
     }
 
+    RUNTIME_ASSERT(scheduled_wakeup != 0);
     uptime_counter = scheduled_wakeup;
     scheduled_wakeup = 0;
 }

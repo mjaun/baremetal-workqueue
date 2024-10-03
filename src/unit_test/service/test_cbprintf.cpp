@@ -122,7 +122,7 @@ TEST(cbprintf, format_size_t)
 {
     check_format("hello %zu!", static_cast<size_t>(0));
     check_format("hello %zu!", static_cast<size_t>(123));
-    check_format("hello %zu!", SIZE_MAX);
+    check_format("hello %zd!", SIZE_MAX);
 }
 
 TEST(cbprintf, format_hex)
@@ -171,6 +171,11 @@ TEST(cbprintf, format_zero_padding_negative)
     check_format("hello %04i!", -1234);
     check_format("hello %05i!", -1234);
     check_format("hello %06i!", -1234);
+}
+
+TEST(cbprintf, format_percent)
+{
+    check_format("hello %d%%!", 55);
 }
 
 TEST(cbprintf, format_mixed_arguments)

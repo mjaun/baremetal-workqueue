@@ -7,7 +7,7 @@ FetchContent_Declare(
 )
 
 set(TESTS OFF CACHE BOOL "Disable CppUTest tests")
-set(CPPUTEST_MEM_LEAK_DETECTION_DISABLED ON)
+set(CPPUTEST_MEM_LEAK_DETECTION_DISABLED ON CACHE BOOL "Disable memory leak detection plugin")
 
 FetchContent_MakeAvailable(CppUTest)
 
