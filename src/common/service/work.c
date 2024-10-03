@@ -1,8 +1,9 @@
 #include "service/work.h"
 #include "service/system.h"
 #include "service/assert.h"
+#include "util/unused.h"
 
-static volatile bool_t work_stopped = true;
+static volatile bool_t running = false;
 static struct work *high_prio_queue = NULL;
 static struct work *low_prio_queue = NULL;
 static struct work *scheduled_queue = NULL;
@@ -21,13 +22,13 @@ static bool_t test_flags_any(struct work *work, uint32_t flags);
 
 void work_run(void)
 {
-    work_stopped = false;
+    running = true;
 
     // trigger softirq in case there is already high prio work
     system_softirq_trigger();
 
     // process low prio queue and scheduled work
-    while (!work_stopped) {
+    while (running) {
         submit_ready_work();
 
         if (!process_next_work(&low_prio_queue)) {
@@ -39,16 +40,11 @@ void work_run(void)
 void system_softirq_handler(void)
 {
     // process high prio queue
-    while (!work_stopped) {
+    while (running) {
         if (!process_next_work(&high_prio_queue)) {
             break;
         }
     }
-}
-
-void work_stop(void)
-{
-    work_stopped = true;
 }
 
 void work_submit(struct work *work)
@@ -350,3 +346,23 @@ static bool_t test_flags_any(struct work *work, uint32_t flags)
 {
     return (work->flags & flags) != 0;
 }
+
+
+#ifdef BUILD_UNIT_TEST
+
+static void stop_request_handler(struct work *work)
+{
+    ARG_UNUSED(work);
+
+    running = false;
+}
+
+static WORK_DEFINE(stop_request_work, UINT32_MAX, stop_request_handler);
+
+void work_run_for(u32_ms_t duration)
+{
+    work_schedule_after(&stop_request_work, duration);
+    work_run();
+}
+
+#endif

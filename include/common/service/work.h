@@ -42,12 +42,22 @@ struct work {
  */
 void work_run(void);
 
+#ifdef BUILD_UNIT_TEST
+
 /**
- * Quits the work loop after processing the current work item.
+ * Enters a loop to execute work items for the specified duration.
  *
- * This function is supposed to be used for unit testing purposes only.
+ * Exiting the loop has the lowest priority, meaning that any submitted work items are
+ * processed before exiting and `work_run_for(0)` can be used to process any submitted
+ * work.
+ *
+ * This function is supposed to be used for unit testing only.
+ *
+ * @param duration  Duration to process work items in milliseconds.
  */
-void work_stop(void);
+void work_run_for(u32_ms_t duration);
+
+#endif
 
 /**
  * Submits an item for execution.

@@ -67,3 +67,28 @@ function(test_sources)
         endforeach()
     endif()
 endfunction()
+
+function(test_library_include_directories)
+    get_property(BUILD_TESTS GLOBAL PROPERTY BUILD_TESTS)
+    if(BUILD_TESTS)
+        target_include_directories(test_lib PUBLIC ${ARGN})
+    endif()
+endfunction()
+
+function(test_library_sources)
+    get_property(BUILD_TESTS GLOBAL PROPERTY BUILD_TESTS)
+    if(BUILD_TESTS)
+        get_property(NAME GLOBAL PROPERTY CURRENT_TEST)
+        target_sources(test_lib PRIVATE ${ARGN})
+
+        foreach(SOURCE_FILE ${ARGN})
+            get_filename_component(SOURCE_NAME ${SOURCE_FILE} NAME)
+
+            set_property(
+                SOURCE ${SOURCE_FILE}
+                DIRECTORY ${CMAKE_SOURCE_DIR}
+                APPEND PROPERTY COMPILE_DEFINITIONS __FILENAME__=\"${SOURCE_NAME}\"
+            )
+        endforeach()
+    endif()
+endfunction()
