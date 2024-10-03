@@ -25,6 +25,15 @@ struct work {
 };
 
 /**
+ * Initializer for a work item.
+ *
+ * @param _priority Priority (lower value means higher priority).
+ * @param _handler Function to execute the work.
+ */
+#define WORK_INITIALIZER(_priority, _handler) \
+    { _handler, _priority, 0, 0, NULL }
+
+/**
  * Defines a new work item.
  *
  * @param _name Name of the defined work item.
@@ -32,7 +41,7 @@ struct work {
  * @param _handler Function to execute the work.
  */
 #define WORK_DEFINE(_name, _priority, _handler) \
-   struct work _name = { .handler = _handler, .priority = _priority }
+   struct work _name = WORK_INITIALIZER(_priority, _handler)
 
 /**
  * Enters a loop to execute work items.

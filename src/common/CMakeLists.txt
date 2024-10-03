@@ -18,14 +18,14 @@ test_library_sources(
 
 set(TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/unit_test)
 
-test_define(cbprintf)
-
-test_sources(
+test_define(cbprintf
     ${TEST_SOURCE_DIR}/service/test_cbprintf.cpp
 )
 
-test_define(log)
-
-test_sources(
+test_define(log
     ${TEST_SOURCE_DIR}/service/test_log.cpp
+)
+
+test_define(work
+    ${TEST_SOURCE_DIR}/service/test_work.cpp
 )

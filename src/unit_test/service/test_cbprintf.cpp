@@ -3,8 +3,7 @@
 #include <string>
 #include <service/system.h>
 
-template<typename... T>
-static void check_format(const char *format, T... args)
+static void check_format(const char *format, auto... args)
 {
     auto string_appender = [](char c, void *ctx) {
         static_cast<std::string *>(ctx)->append(1, c);
@@ -18,8 +17,6 @@ static void check_format(const char *format, T... args)
     int written = snprintf(expected, sizeof(expected), format, args...);
     CHECK_TEXT(written >= 0, "Format via standard printf failed!");
     CHECK_TEXT(static_cast<size_t>(written) < sizeof(expected), "Format test buffer too small!");
-
-    UT_PRINT((std::string(format) + " -> " + std::string(expected)).c_str());
 
     // check direct
     cbprintf(string_appender, &actual_direct, format, args...);

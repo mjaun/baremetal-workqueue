@@ -70,7 +70,6 @@ void system_debug_out(char c)
         if (c != '\n') {
             output_lines.back().append(1, c);
         } else {
-            UT_PRINT_LOCATION(output_lines.back().c_str(), "OUT", output_lines.size());
             new_line = true;
         }
     }
