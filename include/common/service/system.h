@@ -97,8 +97,16 @@ void system_debug_out(char c);
  */
 void system_fatal_error(void);
 
+/**
+ * Triggers the software interrupt.
+ */
 void system_softirq_trigger(void);
 
+/**
+ * Software interrupt handler.
+ *
+ * This function is weakly defined and is supposed to be overridden by the work queue.
+ */
 void system_softirq_handler(void);
 
 #ifdef __cplusplus

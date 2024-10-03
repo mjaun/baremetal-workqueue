@@ -11,11 +11,11 @@ extern "C" {
 
 #define RUNTIME_ASSERT(EXPR) \
     if (!(EXPR)) { \
-        __assert_handler(__FILENAME__, __LINE__); \
+        assert_handler(__FILENAME__, __LINE__); \
     } \
     do {} while (0)
 
-void __assert_handler(const char* file, unsigned line);
+void assert_handler(const char* file, unsigned line);
 
 #ifdef __cplusplus
 }

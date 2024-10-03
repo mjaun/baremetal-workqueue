@@ -217,9 +217,13 @@ char *vprintf_alloc(const char *format, va_list ap)
     va_copy(ap_copy, ap);
 
     int len = vsnprintf(NULL, 0, format, ap_copy);
+
+    va_end(ap);
+
     RUNTIME_ASSERT(len > 0);
 
     char *str = (char *) malloc(len + 1);
     vsnprintf(str, len + 1, format, ap);
+
     return str;
 }

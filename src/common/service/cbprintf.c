@@ -72,9 +72,9 @@ struct read_buffer {
 static enum parse_state parse_format(struct parse_context *ctx, const struct fspec **fspec, char c);
 static enum parse_state parse_fspec(struct fspec *fspec, char c);
 
-static void print_fspec(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value);
-static void print_padding(cbprintf_out_t out, size_t length, bool_t zeroes, char sign);
-static void print_string(cbprintf_out_t out, const char *str);
+static void print_fspec(cbprintf_out_t out, void *ctx, const struct fspec *fspec, union fspec_value value);
+static void print_padding(cbprintf_out_t out, void *ctx, size_t length, bool_t zeroes, char sign);
+static void print_string(cbprintf_out_t out, void *ctx, const char *str);
 
 static bool_t buffer_write(struct write_buffer *buffer, const void *data, size_t length);
 static bool_t buffer_read(struct read_buffer *buffer, void *data, size_t length);
@@ -82,27 +82,27 @@ static bool_t buffer_read(struct read_buffer *buffer, void *data, size_t length)
 static size_t encode_uint(char *buffer, uint64_t value, size_t base);
 static size_t get_base(enum fspec_specifier specifier);
 
-void cbprintf(cbprintf_out_t out, const char *format, ...)
+void cbprintf(cbprintf_out_t out, void *ctx, const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
 
-    cbvprintf(out, format, ap);
+    cbvprintf(out, ctx, format, ap);
 
     va_end(ap);
 }
 
-void cbvprintf(cbprintf_out_t out, const char *format, va_list ap)
+void cbvprintf(cbprintf_out_t out, void *ctx, const char *format, va_list ap)
 {
-    struct parse_context ctx = parse_context_init;
+    struct parse_context parse_ctx = parse_context_init;
 
     for (size_t i = 0; format[i] != '\0'; i++) {
         const struct fspec *fspec = NULL;
-        enum parse_state state = parse_format(&ctx, &fspec, format[i]);
+        enum parse_state state = parse_format(&parse_ctx, &fspec, format[i]);
 
         // regular characters are directly printed
         if (state == PARSE_STATE_REGULAR_CHAR) {
-            out(format[i]);
+            out(format[i], ctx);
             continue;
         }
 
@@ -175,7 +175,7 @@ void cbvprintf(cbprintf_out_t out, const char *format, va_list ap)
                     break;
             }
 
-            print_fspec(out, fspec, value);
+            print_fspec(out, ctx, fspec, value);
             continue;
         }
 
@@ -355,7 +355,7 @@ size_t cbvprintf_capture(void *packaged, size_t length, const char *format, va_l
     return buffer.index;
 }
 
-void cbprintf_restore(cbprintf_out_t out, const void *packaged, size_t length)
+void cbprintf_restore(cbprintf_out_t out, void *ctx, const void *packaged, size_t length)
 {
     // first retrieve the format string itself
     struct read_buffer buffer = {
@@ -373,15 +373,15 @@ void cbprintf_restore(cbprintf_out_t out, const void *packaged, size_t length)
     }
 
     // then parse through the format string and retrieve all contained arguments
-    struct parse_context ctx = parse_context_init;
+    struct parse_context parse_ctx = parse_context_init;
 
     for (size_t i = 0; format[i] != '\0'; i++) {
         const struct fspec *fspec = NULL;
-        enum parse_state state = parse_format(&ctx, &fspec, format[i]);
+        enum parse_state state = parse_format(&parse_ctx, &fspec, format[i]);
 
         // regular characters are directly printed
         if (state == PARSE_STATE_REGULAR_CHAR) {
-            out(format[i]);
+            out(format[i], ctx);
             continue;
         }
 
@@ -516,7 +516,7 @@ void cbprintf_restore(cbprintf_out_t out, const void *packaged, size_t length)
                 break;
             }
 
-            print_fspec(out, fspec, value);
+            print_fspec(out, ctx, fspec, value);
             continue;
         }
 
@@ -662,10 +662,11 @@ static enum parse_state parse_fspec(struct fspec *fspec, char c)
  * Helper function to print a format specifier value using a provided print function.
  *
  * @param out Function to print characters.
+ * @param ctx User argument.
  * @param fspec Information about the value to print.
  * @param value Value to print.
  */
-static void print_fspec(cbprintf_out_t out, const struct fspec *fspec, union fspec_value value)
+static void print_fspec(cbprintf_out_t out, void *ctx, const struct fspec *fspec, union fspec_value value)
 {
     switch (fspec->specifier) {
         case SPECIFIER_SIGNED_DEC: {
@@ -679,29 +680,44 @@ static void print_fspec(cbprintf_out_t out, const struct fspec *fspec, union fsp
             bool_t pad_zeroes = (fspec->flags & FLAG_PAD_ZEROES) != 0;
             char pad_char = is_negative ? '-' : '\0';
 
-            print_padding(out, pad_length, pad_zeroes, pad_char);
-            print_string(out, digits);
+            print_padding(out, ctx, pad_length, pad_zeroes, pad_char);
+            print_string(out, ctx, digits);
             break;
         }
         case SPECIFIER_UNSIGNED_DEC:
-        case SPECIFIER_UNSIGNED_HEX:
-        case SPECIFIER_POINTER: {
+        case SPECIFIER_UNSIGNED_HEX: {
             char digits[DIGITS_BUFFER_SIZE];
             size_t num_digits = encode_uint(digits, value.unsigned_int, get_base(fspec->specifier));
 
             size_t pad_length = num_digits < fspec->min_width ? fspec->min_width - num_digits : 0;
             bool_t pad_zeroes = (fspec->flags & FLAG_PAD_ZEROES) != 0;
 
-            print_padding(out, pad_length, pad_zeroes, '\0');
-            print_string(out, digits);
+            print_padding(out, ctx, pad_length, pad_zeroes, '\0');
+            print_string(out, ctx, digits);
+            break;
+        }
+        case SPECIFIER_POINTER: {
+            if (value.unsigned_int == 0) {
+                print_string(out, ctx, "(nil)");
+            } else {
+                char digits[DIGITS_BUFFER_SIZE];
+                size_t num_digits = encode_uint(digits, value.unsigned_int, get_base(fspec->specifier));
+
+                size_t pad_length = num_digits < fspec->min_width ? fspec->min_width - num_digits : 0;
+                bool_t pad_zeroes = (fspec->flags & FLAG_PAD_ZEROES) != 0;
+
+                print_string(out, ctx, "0x");
+                print_padding(out, ctx, pad_length, pad_zeroes, '\0');
+                print_string(out, ctx, digits);
+            }
             break;
         }
         case SPECIFIER_STRING: {
-            print_string(out, value.string);
+            print_string(out, ctx, value.string);
             break;
         }
         case SPECIFIER_ESCAPE_PERCENT: {
-            out('%');
+            out('%', ctx);
             break;
         }
         default: {
@@ -753,14 +769,15 @@ bool_t buffer_read(struct read_buffer *buffer, void *data, size_t length)
  * Prints a padding for a right justified field.
  *
  * @param out Output function.
+ * @param ctx User argument.
  * @param length Length of the padding.
  * @param zeroes True to pad with '0', false to pad with ' '.
  * @param sign Optional sign for the field. Should be '+', '-', or '\0'. Always printed.
  */
-static void print_padding(cbprintf_out_t out, size_t length, bool_t zeroes, char sign)
+static void print_padding(cbprintf_out_t out, void *ctx, size_t length, bool_t zeroes, char sign)
 {
     if (zeroes && (sign != '\0')) {
-        out(sign);
+        out(sign, ctx);
     }
 
     if ((sign != '\0') && (length > 0)) {
@@ -770,11 +787,11 @@ static void print_padding(cbprintf_out_t out, size_t length, bool_t zeroes, char
     char pad_char = zeroes ? '0' : ' ';
 
     for (size_t i = 0; i < length; i++) {
-        out(pad_char);
+        out(pad_char, ctx);
     }
 
     if (!zeroes && (sign != '\0')) {
-        out(sign);
+        out(sign, ctx);
     }
 }
 
@@ -782,12 +799,13 @@ static void print_padding(cbprintf_out_t out, size_t length, bool_t zeroes, char
  * Prints a null terminated string using the provided output function.
  *
  * @param out Output function.
+ * @param ctx User argument.
  * @param str Null terminated string to print.
  */
-static void print_string(cbprintf_out_t out, const char *str)
+static void print_string(cbprintf_out_t out, void *ctx, const char *str)
 {
     for (size_t i = 0; str[i] != '\0'; i++) {
-        out(str[i]);
+        out(str[i], ctx);
     }
 }
 

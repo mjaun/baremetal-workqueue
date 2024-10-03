@@ -3,6 +3,7 @@
 #include <service/cbprintf.h>
 #include <service/work.h>
 #include <service/assert.h>
+#include <util/unused.h>
 #include <string.h>
 #include <stdarg.h>
 
@@ -55,6 +56,8 @@ static uint32_t ring_buffer_read_dropped(void);
 
 static const char *log_level_str(enum log_level level);
 static const char *log_level_color(enum log_level level);
+
+static void output(char c, void *ctx);
 
 static struct log_module *module_list;
 static struct ring_buffer ring_buffer;
@@ -140,7 +143,7 @@ bool_t log_process(void)
     uint32_t dropped = ring_buffer_read_dropped();
 
     if (dropped > 0) {
-        cbprintf(system_debug_out, ANSI_BOLD_RED "--- %u messages dropped ---" ANSI_RESET NEWLINE, (unsigned) dropped);
+        cbprintf(output, NULL, ANSI_BOLD_RED "--- %u messages dropped ---" ANSI_RESET NEWLINE, (unsigned) dropped);
     }
 
     // process one log message
@@ -159,7 +162,8 @@ bool_t log_process(void)
     uint32_t timestamp_us = header.timestamp % 1000000ULL;
 
     cbprintf(
-        system_debug_out,
+        output,
+        NULL,
         "[%02u:%02u:%02u.%03u,%03u] %s<%s> %s: ",
         (unsigned) (timestamp_s / 3600),
         (unsigned) (timestamp_s / 60 % 60),
@@ -172,13 +176,15 @@ bool_t log_process(void)
     );
 
     cbprintf_restore(
-        system_debug_out,
+        output,
+        NULL,
         buffer + sizeof(header),
         length - sizeof(header)
     );
 
     cbprintf(
-        system_debug_out,
+        output,
+        NULL,
         ANSI_RESET NEWLINE
     );
 
@@ -315,4 +321,16 @@ static const char *log_level_color(enum log_level level)
         case LOG_LEVEL_DBG: return "";
         default: return "";
     }
+}
+
+/**
+ * Helper function compatible with cbprintf to print to the debug output.
+ *
+ * @param c Character to print.
+ * @param ctx User context (unused).
+ */
+void output(char c, void *ctx)
+{
+    ARG_UNUSED(ctx);
+    system_debug_out(c);
 }

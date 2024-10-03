@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-typedef void (*cbprintf_out_t)(char c);
+typedef void (*cbprintf_out_t)(char c, void *ctx);
 
 /**
  * Formats a string outputting it character wise to the provided output function.
@@ -21,15 +21,16 @@ typedef void (*cbprintf_out_t)(char c);
  * - Flags: 0
  *
  * @param out Function to output characaters.
+ * @param ctx User argument passed to the output function.
  * @param format Format string.
  * @param ... Arguments for the format string.
  */
-void cbprintf(cbprintf_out_t out, const char *format, ...);
+void cbprintf(cbprintf_out_t out, void *ctx, const char *format, ...);
 
 /**
  * Similar to `cbprintf` but taking a `va_list`.
  */
-void cbvprintf(cbprintf_out_t out, const char *format, va_list ap);
+void cbvprintf(cbprintf_out_t out, void *ctx, const char *format, va_list ap);
 
 /**
  * Captures the provided format string together with its arguments and stores it in the provided buffer
@@ -57,10 +58,11 @@ size_t cbvprintf_capture(void *packaged, size_t length, const char *format, va_l
  * output function. See `cbprintf_capture`.
  *
  * @param out Function to output characters.
+ * @param ctx User argument passed to the output function.
  * @param packaged Buffer containing the captured string.
  * @param length Number of bytes in the buffer.
  */
-void cbprintf_restore(cbprintf_out_t out, const void *packaged, size_t length);
+void cbprintf_restore(cbprintf_out_t out, void *ctx, const void *packaged, size_t length);
 
 #ifdef __cplusplus
 }
