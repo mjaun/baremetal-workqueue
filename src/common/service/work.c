@@ -357,7 +357,7 @@ static void stop_request_handler(struct work *work)
     running = false;
 }
 
-static WORK_DEFINE(stop_request_work, UINT32_MAX, stop_request_handler);
+static WORK_DEFINE(stop_request_work, INT32_MAX, stop_request_handler);
 
 void work_run_for(u32_ms_t duration)
 {

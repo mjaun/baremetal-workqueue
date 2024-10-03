@@ -53,7 +53,7 @@ __attribute__((weak)) void system_softirq_handler(void)
     // supposed to be overridden, do nothing
 }
 
-void system_debug_out(char c)
+__attribute__((weak)) void system_debug_out(char c)
 {
     static char output_buffer[256];
     static size_t output_index;
@@ -62,7 +62,7 @@ void system_debug_out(char c)
     if (c == '\n') {
         line_counter++;
         output_buffer[output_index] = '\0';
-        ut_print_c_location(output_buffer, "DEBUG", line_counter);
+        ut_print_c_location(output_buffer, "OUT", line_counter);
         output_index = 0;
     } else {
         output_buffer[output_index] = c;
@@ -73,6 +73,16 @@ void system_debug_out(char c)
             FAIL_TEXT_C("Output buffer overflow!");
         }
     }
+}
+
+void system_busy_sleep_ms(u64_ms_t delay)
+{
+    system_busy_sleep_us(delay * 1000);
+}
+
+void system_busy_sleep_us(u64_us_t delay)
+{
+    uptime_counter += delay;
 }
 
 void system_fatal_error(void)

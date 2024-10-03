@@ -23,3 +23,9 @@ test_define(cbprintf)
 test_sources(
     ${TEST_SOURCE_DIR}/service/test_cbprintf.cpp
 )
+
+test_define(log)
+
+test_sources(
+    ${TEST_SOURCE_DIR}/service/test_log.cpp
+)

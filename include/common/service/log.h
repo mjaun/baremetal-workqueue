@@ -32,13 +32,12 @@ struct log_module {
  */
 #define LOG_MODULE_REGISTER(_name) \
     static struct log_module __log_module = { \
-        .name = #_name, \
-        .level = DEFAULT_LOG_LEVEL, \
+        #_name, DEFAULT_LOG_LEVEL, NULL, \
     }; \
     static void __attribute__((constructor)) __log_module_register_this(void) { \
         log_module_register(&__log_module); \
     } \
-    static struct log_module __log_module \
+    void log_module_register(struct log_module *)  // some declaration for semicolon after macro
 
 /**
  * Logs an error message.
