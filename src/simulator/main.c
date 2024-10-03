@@ -1,8 +1,8 @@
-#include "application/application_startup.h"
-#include "application/peripherals_sim.h"
-#include "service/system_sim.h"
-#include "service/adapter_sim.h"
-#include "util/unused.h"
+#include <application/application_main.h>
+#include <application/peripherals_sim.h>
+#include <service/system_sim.h>
+#include <service/adapter_sim.h>
+#include <util/unused.h>
 
 int main(int argc, char *argv[])
 {

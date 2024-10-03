@@ -1,7 +1,11 @@
 #pragma once
 
-#include "util/types.h"
+#include <util/types.h>
 #include <stdarg.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef void (*cbprintf_out_t)(char c);
 
@@ -57,3 +61,7 @@ size_t cbvprintf_capture(void *packaged, size_t length, const char *format, va_l
  * @param length Number of bytes in the buffer.
  */
 void cbprintf_restore(cbprintf_out_t out, const void *packaged, size_t length);
+
+#ifdef __cplusplus
+}
+#endif

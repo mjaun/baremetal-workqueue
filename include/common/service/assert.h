@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <assert.h>
 
 // requires at least C11
@@ -12,3 +16,7 @@
     do {} while (0)
 
 void __assert_handler(const char* file, unsigned line);
+
+#ifdef __cplusplus
+}
+#endif

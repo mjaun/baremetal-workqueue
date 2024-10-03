@@ -1,7 +1,7 @@
-#include "service/work.h"
-#include "service/system.h"
-#include "service/assert.h"
-#include "util/unused.h"
+#include <service/work.h>
+#include <service/system.h>
+#include <service/assert.h>
+#include <util/unused.h>
 
 static volatile bool_t running = false;
 static struct work *high_prio_queue = NULL;

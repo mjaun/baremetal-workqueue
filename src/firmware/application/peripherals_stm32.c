@@ -1,7 +1,7 @@
-#include "application/peripherals.h"
-#include "driver/uart_stm32.h"
-#include "driver/gpio_stm32.h"
-#include "main.h"
+#include <application/peripherals.h>
+#include <driver/uart_stm32.h>
+#include <driver/gpio_stm32.h>
+#include <main.h>
 
 extern UART_HandleTypeDef huart2;
 

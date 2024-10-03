@@ -1,5 +1,5 @@
-#include "driver/gpio_sim.h"
-#include "util/container_of.h"
+#include <driver/gpio_sim.h>
+#include <util/container_of.h>
 
 static void adapter_handler(struct adapter *adapter, const struct adapter_message *arg);
 

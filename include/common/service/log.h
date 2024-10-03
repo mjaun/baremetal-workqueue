@@ -2,6 +2,10 @@
 
 #define DEFAULT_LOG_LEVEL  LOG_LEVEL_INF
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Log levels.
  */
@@ -103,3 +107,7 @@ void log_message(const struct log_module *module, enum log_level level, const ch
  * This function is intended for internal use by logging macros.
  */
 void log_module_register(struct log_module *module);
+
+#ifdef __cplusplus
+}
+#endif

@@ -1,6 +1,10 @@
 #pragma once
 
-#include "util/types.h"
+#include <util/types.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct adapter;
 struct adapter_message;
@@ -26,3 +30,7 @@ void adapter_send_string(struct adapter *adapter, const char *value);
 bool_t adapter_check_bool(const struct adapter_message *message, bool_t expected);
 
 bool_t adapter_check_string(const struct adapter_message *message, const char *expected);
+
+#ifdef __cplusplus
+}
+#endif

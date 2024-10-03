@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct gpio_pin;
 
 typedef void (*exti_handler_t)(struct gpio_pin *pin);
@@ -20,3 +24,7 @@ void gpio_toggle(struct gpio_pin *pin);
  * @param handler Callback function to invoke.
  */
 void gpio_exti_callback(struct gpio_pin *pin, exti_handler_t handler);
+
+#ifdef __cplusplus
+}
+#endif

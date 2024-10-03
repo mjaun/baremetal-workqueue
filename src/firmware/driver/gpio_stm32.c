@@ -1,5 +1,5 @@
-#include "driver/gpio_stm32.h"
-#include "service/system.h"
+#include <driver/gpio_stm32.h>
+#include <service/system.h>
 
 static struct gpio_pin *exti_pins;
 

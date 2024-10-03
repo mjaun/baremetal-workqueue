@@ -1,5 +1,5 @@
-#include "driver/uart_sim.h"
-#include "util/unused.h"
+#include <driver/uart_sim.h>
+#include <util/unused.h>
 #include <stdio.h>
 
 void uart_write(struct uart *uart, const uint8_t *data, size_t length)

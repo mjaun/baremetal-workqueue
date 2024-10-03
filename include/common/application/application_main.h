@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-void uptime_printer_init(void);
+void application_main(void);
 
 #ifdef __cplusplus
 }

@@ -1,10 +1,10 @@
-#include "application/application_startup.h"
-#include "application/peripherals.h"
-#include "driver/gpio.h"
-#include "service/work.h"
-#include "service/system.h"
-#include "service/log.h"
-#include "util/unused.h"
+#include <application/application_main.h>
+#include <application/peripherals.h>
+#include <driver/gpio.h>
+#include <service/work.h>
+#include <service/system.h>
+#include <service/log.h>
+#include <util/unused.h>
 
 LOG_MODULE_REGISTER(application_main);
 

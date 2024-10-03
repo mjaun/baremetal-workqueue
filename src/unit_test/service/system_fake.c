@@ -1,6 +1,6 @@
-#include "service/system.h"
-#include "service/assert.h"
-#include "util/unused.h"
+#include <service/system.h>
+#include <service/assert.h>
+#include <util/unused.h>
 
 static u64_us_t uptime_counter;
 static u64_us_t scheduled_wakeup;

@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "application/application_startup.h"
+#include "application/application_main.h"
 #include "service/system.h"
 /* USER CODE END Includes */
 
