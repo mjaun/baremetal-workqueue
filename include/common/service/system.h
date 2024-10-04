@@ -9,45 +9,43 @@ extern "C" {
 /**
  * Globally disables interrupts.
  *
- * May be called multiple times (like a recursive mutex). Interrupts are re-enabled if
- * `system_critical_section_exit()` is called the same amount of times as
- * `system_critical_section_enter()`.
+ * May be called multiple times like a recursive mutex.
  */
 void system_critical_section_enter(void);
 
 /**
  * Globally enables interrupts.
  *
- * May be called multiple times (like a recursive mutex). Interrupts are re-enabled if
- * `system_critical_section_exit()` is called the same amount of times as
- * `system_critical_section_enter()`.
+ * May be called multiple times like a recursive mutex.
  */
 void system_critical_section_exit(void);
 
 /**
- * Schedules a timer interrupt after the specified time.
+ * Schedules a timer interrupt at the specified uptime.
  *
- * This function is supposed to be used before using `system_enter_sleep_mode()` to
- * schedule a time based wake-up. This should be done within a critical section (see
- * `system_critical_section_enter()`) to avoid race conditions.
+ * If the timeout is larger than supported by the hardware timer, the timer is scheduled as
+ * late as possible and the timer handler is called earlier.
+ * If the scheduled time has already passed, the timer is scheduled as early as possible.
  *
- * If the timeout is larger than supported by the hardware timer, the wake-up is scheduled as
- * late as possible and the function still returns true. If the timeout is smaller than supported
- * by the hardware timer, this function does nothing and returns false.
- *
- * @param timeout Timeout after which the interrupt shall occur.
- * @return True, if the wake-up has been scheduled. False, if the timeout is too small to schedule.
+ * @param uptime Uptime at which the interrupt shall occur.
  */
-bool_t system_schedule_wakeup(u64_ms_t timeout);
+void system_timer_schedule_at(u64_ms_t uptime);
+
+/**
+ * System timer interrupt handler.
+ *
+ * This function is not implemented and is supposed to be defined by the work queue.
+ */
+void system_timer_handler(void);
 
 /**
  * Causes the CPU to enter sleep mode until an interrupt occurs.
  *
- * This function can be used within a critical section (see `system_critical_section_enter()`)
- * to avoid a race condition. This function returns once an interrupt is pending.
- * The interrupt is processed after the critical section is exited (see `system_critical_section_exit()`).
+ * The function returns once an interrupt is pending, even if it is disabled. Therefore it can be used
+ * within a critical section (see `system_critical_section_enter()`) to avoid race conditions.
+ * In that case, the pending interrupts are processed after the critical section is exited.
  *
- * A time based wake-up can be scheduled using `system_schedule_wakeup()`.
+ * A time based wake-up can be scheduled using `system_timer_schedule_at()`.
  */
 void system_enter_sleep_mode(void);
 

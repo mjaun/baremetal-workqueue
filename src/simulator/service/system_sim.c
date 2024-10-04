@@ -8,7 +8,6 @@
 #include <pthread.h>
 
 static bool soft_irq_active;
-static bool soft_irq_requested;
 static i64_us_t uptime_delta;
 static u64_us_t scheduled_wakeup;
 
@@ -40,7 +39,7 @@ void system_critical_section_exit(void)
     RUNTIME_ASSERT(ret == 0);
 }
 
-bool_t system_schedule_wakeup(u64_ms_t timeout)
+bool_t system_timer_schedule_at(u64_ms_t timeout)
 {
     scheduled_wakeup = system_uptime_get_us() + (timeout * 1000);
     return true;
@@ -81,17 +80,8 @@ void system_softirq_trigger(void)
 {
     if (!soft_irq_active) {
         soft_irq_active = true;
-
-        do {
-            soft_irq_requested = false;
-            system_softirq_handler();
-        } while (soft_irq_requested);
-
+        system_softirq_handler();
         soft_irq_active = false;
-    } else {
-        // interrupt triggered while ISR still active, remember flag
-        // and handle interrupt again after exiting ISR in loop above
-        soft_irq_requested = true;
     }
 }
 

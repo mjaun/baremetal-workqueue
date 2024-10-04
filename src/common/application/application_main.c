@@ -53,6 +53,7 @@ void low_prio_handler(struct work *work)
     work_schedule_again(&low_prio, 2000);
 
     LOG_INF("LOW start");
+    work_schedule_after(&high_prio, 200);
     system_busy_sleep_ms(1000);
     LOG_INF("LOW done");
 }

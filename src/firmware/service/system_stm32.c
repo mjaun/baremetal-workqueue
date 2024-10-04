@@ -65,19 +65,26 @@ void system_busy_sleep_us(u64_us_t delay)
     }
 }
 
-bool_t system_schedule_wakeup(u64_ms_t timeout)
+void system_timer_schedule_at(u64_ms_t uptime)
 {
-    uint64_t timer_period = timeout * 10;
+    u64_us_t now = system_uptime_get_us();
+    uint64_t timer_period;
 
-    // timeout needs to be at least 2 cycles
-    if (timer_period < 2) {
-        return false;
+    if ((now / 1000) < uptime) {
+        timer_period = (uptime * 10) - (now / 100);
+    } else {
+        // results in smallest reload value 1
+        timer_period = 2;
     }
 
-    // timer is 16 bit, if a larger timeout is requested we schedule wake-up as late as we can
+    // timer is 16 bit, if a larger timeout is requested we schedule as late as we can
     if (timer_period > 0x10000) {
         timer_period = 0x10000;
     }
+
+    system_critical_section_enter();
+
+    __HAL_TIM_DISABLE(&htim3);
 
     __HAL_TIM_SetAutoreload(&htim3, timer_period - 1);
     __HAL_TIM_SetCounter(&htim3, 0);
@@ -86,7 +93,7 @@ bool_t system_schedule_wakeup(u64_ms_t timeout)
     __HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE(&htim3);
 
-    return true;
+    system_critical_section_exit();
 }
 
 void system_enter_sleep_mode(void)
@@ -119,26 +126,17 @@ void system_softirq_trigger(void)
     HAL_EXTI_GenerateSWI(&hexti0);
 }
 
-__attribute__((weak)) void system_softirq_handler(void)
-{
-    // supposed to be overridden, do nothing
-}
-
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim == &htim2) {
-        // uptime counter overflow, increment high register
+        // uptime counter overflow: increment high register
         uptime_high32++;
     }
 
     if (htim == &htim3) {
-        // wake-up timer expired, disable timer
+        // system timer expired: disable timer and invoke callback
         __HAL_TIM_DISABLE(&htim3);
         __HAL_TIM_DISABLE_IT(&htim3, TIM_IT_UPDATE);
+        system_timer_handler();
     }
-}
-
-void HAL_EXTI_PendingCallback()
-{
-
 }
