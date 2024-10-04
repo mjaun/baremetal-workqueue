@@ -105,7 +105,7 @@ void system_softirq_trigger(void);
 /**
  * Software interrupt handler.
  *
- * This function is weakly defined and is supposed to be overridden by the work queue.
+ * This function is not implemented and is supposed to be defined by the work queue.
  */
 void system_softirq_handler(void);
 
