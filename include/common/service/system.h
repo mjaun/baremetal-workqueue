@@ -29,14 +29,7 @@ void system_critical_section_exit(void);
  *
  * @param uptime Uptime at which the interrupt shall occur.
  */
-void system_timer_schedule_at(u64_ms_t uptime);
-
-/**
- * System timer interrupt handler.
- *
- * This function is not implemented and is supposed to be defined by the work queue.
- */
-void system_timer_handler(void);
+void system_wakeup_schedule_at(u64_ms_t uptime);
 
 /**
  * Causes the CPU to enter sleep mode until an interrupt occurs.
@@ -94,18 +87,6 @@ void system_debug_out(char c);
  * The implementation should use `log_panic` to output any pending log messages and then halt/quit the application.
  */
 void system_fatal_error(void);
-
-/**
- * Triggers the software interrupt.
- */
-void system_softirq_trigger(void);
-
-/**
- * Software interrupt handler.
- *
- * This function is not implemented and is supposed to be defined by the work queue.
- */
-void system_softirq_handler(void);
 
 #ifdef __cplusplus
 }

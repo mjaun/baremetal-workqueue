@@ -4,13 +4,12 @@
 #include <util/unused.h>
 
 static volatile bool_t running = false;
-static struct work *high_prio_queue = NULL;
-static struct work *low_prio_queue = NULL;
+static struct work *submitted_queue = NULL;
 static struct work *scheduled_queue = NULL;
 
 static bool_t process_next_work(struct work **queue);
-static void schedule_timer_locked();
-static void idle_sleep();
+static void submit_ready_work();
+static void sleep_until_ready();
 
 static void submit_add_locked(struct work **queue, struct work *work);
 static void schedule_add_locked(struct work *work, u64_ms_t scheduled_uptime);
@@ -20,20 +19,31 @@ static void set_flags(struct work *work, uint32_t flags);
 static void clear_flags(struct work *work, uint32_t flags);
 static bool_t test_flags_any(struct work *work, uint32_t flags);
 
+#ifdef BUILD_UNIT_TEST
+static void stop_request_handler(struct work *work);
+static WORK_DEFINE(stop_request_work, INT32_MAX, stop_request_handler);
+#endif
+
 void work_run(void)
 {
     running = true;
 
-    // trigger softirq in case there is already high prio work
-    system_softirq_trigger();
-
-    // process low prio queue
     while (running) {
-        if (!process_next_work(&low_prio_queue)) {
-            idle_sleep();
+        submit_ready_work();
+
+        if (!process_next_work(&submitted_queue)) {
+            sleep_until_ready();
         }
     }
 }
+
+#ifdef BUILD_UNIT_TEST
+void work_run_for(u32_ms_t duration)
+{
+    work_schedule_after(&stop_request_work, duration);
+    work_run();
+}
+#endif
 
 void work_submit(struct work *work)
 {
@@ -50,12 +60,7 @@ void work_submit(struct work *work)
         remove_locked(&scheduled_queue, work, WORK_ITEM_SCHEDULED);
     }
 
-    if (work->priority >= 0) {
-        submit_add_locked(&low_prio_queue, work);
-    } else {
-        submit_add_locked(&high_prio_queue, work);
-        system_softirq_trigger();
-    }
+    submit_add_locked(&submitted_queue, work);
 
     system_critical_section_exit();
 }
@@ -76,7 +81,6 @@ void work_schedule_at(struct work *work, u64_ms_t uptime)
 
     if (!test_flags_any(work, WORK_ITEM_SCHEDULED | WORK_ITEM_SUBMITTED)) {
         schedule_add_locked(work, uptime);
-        schedule_timer_locked();
     }
 
     system_critical_section_exit();
@@ -91,28 +95,39 @@ void work_cancel(struct work *work)
     }
 
     if (test_flags_any(work, WORK_ITEM_SUBMITTED)) {
-        if (work->priority >= 0) {
-            remove_locked(&low_prio_queue, work, WORK_ITEM_SUBMITTED);
-        } else {
-            remove_locked(&high_prio_queue, work, WORK_ITEM_SUBMITTED);
-        }
+        remove_locked(&submitted_queue, work, WORK_ITEM_SUBMITTED);
     }
 
     system_critical_section_exit();
 }
 
 /**
- * Schedules the system timer based on the first item in the scheduled queue, if any.
- *
- * Interrupts must be locked.
+ * Submits all work items from the scheduled queue which are ready.
  */
-static void schedule_timer_locked()
+static void submit_ready_work()
 {
-    struct work* next = scheduled_queue;
+    u64_ms_t current_uptime = system_uptime_get_ms();
 
-    if (next != NULL) {
-        system_timer_schedule_at(next->scheduled_uptime);
+    system_critical_section_enter();
+
+    struct work *work = scheduled_queue;
+
+    // submit items
+    while ((work != NULL) && (work->scheduled_uptime <= current_uptime)) {
+        struct work *next = work->next;
+
+        clear_flags(work, WORK_ITEM_SCHEDULED);
+        work->next = NULL;
+
+        submit_add_locked(&submitted_queue, work);
+
+        work = next;
     }
+
+    // update queue head
+    scheduled_queue = work;
+
+    system_critical_section_exit();
 }
 
 /**
@@ -152,62 +167,31 @@ static bool_t process_next_work(struct work **queue)
 }
 
 /**
- * Enters sleep mode if there is no more work submitted.
+ * Enters sleep mode until the next scheduled work item becomes ready.
  */
-static void idle_sleep()
+static void sleep_until_ready()
 {
     system_critical_section_enter();
 
-    // don't go to sleep if there is still work submitted
-    if (low_prio_queue != NULL) {
+    // don't go to sleep if there is still submitted work
+    if (submitted_queue != NULL) {
         system_critical_section_exit();
         return;
     }
 
+    if (scheduled_queue != NULL) {
+        u64_ms_t current_uptime = system_uptime_get_ms();
+
+        // don't go to sleep if there is ready work
+        if (scheduled_queue->scheduled_uptime < current_uptime) {
+            system_critical_section_exit();
+            return;
+        }
+
+        system_wakeup_schedule_at(scheduled_queue->scheduled_uptime);
+    }
+
     system_enter_sleep_mode();
-
-    system_critical_section_exit();
-}
-
-void system_softirq_handler(void)
-{
-    // process high prio queue
-    while (running) {
-        if (!process_next_work(&high_prio_queue)) {
-            break;
-        }
-    }
-}
-
-void system_timer_handler(void)
-{
-    system_critical_section_enter();
-
-    u64_ms_t current_uptime = system_uptime_get_ms();
-    struct work *work = scheduled_queue;
-
-    // submit ready items
-    while ((work != NULL) && (work->scheduled_uptime <= current_uptime)) {
-        struct work *next = work->next;
-
-        clear_flags(work, WORK_ITEM_SCHEDULED);
-        work->next = NULL;
-
-        if (work->priority >= 0) {
-            submit_add_locked(&low_prio_queue, work);
-        } else {
-            submit_add_locked(&high_prio_queue, work);
-            system_softirq_trigger();
-        }
-
-        work = next;
-    }
-
-    // update queue head
-    scheduled_queue = work;
-
-    // schedule next timer interrupt
-    schedule_timer_locked();
 
     system_critical_section_exit();
 }
@@ -350,22 +334,10 @@ static bool_t test_flags_any(struct work *work, uint32_t flags)
     return (work->flags & flags) != 0;
 }
 
-
 #ifdef BUILD_UNIT_TEST
-
 static void stop_request_handler(struct work *work)
 {
     ARG_UNUSED(work);
-
     running = false;
 }
-
-static WORK_DEFINE(stop_request_work, INT32_MAX, stop_request_handler);
-
-void work_run_for(u32_ms_t duration)
-{
-    work_schedule_after(&stop_request_work, duration);
-    work_run();
-}
-
 #endif

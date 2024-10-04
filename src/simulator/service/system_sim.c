@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <pthread.h>
 
-static bool soft_irq_active;
 static i64_us_t uptime_delta;
 static u64_us_t scheduled_wakeup;
 
@@ -39,10 +38,9 @@ void system_critical_section_exit(void)
     RUNTIME_ASSERT(ret == 0);
 }
 
-bool_t system_timer_schedule_at(u64_ms_t timeout)
+void system_wakeup_schedule_at(u64_ms_t uptime)
 {
-    scheduled_wakeup = system_uptime_get_us() + (timeout * 1000);
-    return true;
+    scheduled_wakeup = uptime * 1000;
 }
 
 void system_enter_sleep_mode(void)
@@ -74,15 +72,6 @@ void system_busy_sleep_ms(u64_ms_t delay)
 void system_busy_sleep_us(u64_us_t delay)
 {
     usleep(delay);
-}
-
-void system_softirq_trigger(void)
-{
-    if (!soft_irq_active) {
-        soft_irq_active = true;
-        system_softirq_handler();
-        soft_irq_active = false;
-    }
 }
 
 void system_debug_out(char c)

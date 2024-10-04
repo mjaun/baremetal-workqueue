@@ -18,7 +18,7 @@ enum work_flags {
 
 struct work {
     work_handler_t handler;
-    int32_t priority;
+    uint32_t priority;
     u64_ms_t scheduled_uptime;
     uint32_t flags;
     struct work *next;
@@ -52,7 +52,6 @@ struct work {
 void work_run(void);
 
 #ifdef BUILD_UNIT_TEST
-
 /**
  * Enters a loop to execute work items for the specified duration.
  *
@@ -65,7 +64,6 @@ void work_run(void);
  * @param duration  Duration to process work items in milliseconds.
  */
 void work_run_for(u32_ms_t duration);
-
 #endif
 
 /**

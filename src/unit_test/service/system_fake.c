@@ -2,7 +2,6 @@
 #include <service/system.h>
 #include <service/unit_test.h>
 
-static bool soft_irq_active;
 static u64_us_t uptime_counter;
 static u64_us_t scheduled_wakeup;
 
@@ -16,10 +15,9 @@ void system_critical_section_exit(void)
     // do nothing
 }
 
-bool_t system_timer_schedule_at(u64_ms_t timeout)
+void system_wakeup_schedule_at(u64_ms_t uptime)
 {
-    scheduled_wakeup = uptime_counter + (timeout * 1000);
-    return true;
+    scheduled_wakeup = uptime * 1000;
 }
 
 void system_enter_sleep_mode(void)
@@ -37,15 +35,6 @@ u64_us_t system_uptime_get_us(void)
 u64_ms_t system_uptime_get_ms(void)
 {
     return uptime_counter / 1000;
-}
-
-void system_softirq_trigger(void)
-{
-    if (!soft_irq_active) {
-        soft_irq_active = true;
-        system_softirq_handler();
-        soft_irq_active = false;
-    }
 }
 
 __attribute__((weak)) void system_debug_out(char c)

@@ -12,7 +12,7 @@ static void gpio_exti_handler(struct gpio_pin *pin);
 static void high_prio_handler(struct work *work);
 static void low_prio_handler(struct work *work);
 
-WORK_DEFINE(high_prio, -5, high_prio_handler);
+WORK_DEFINE(high_prio, 0, high_prio_handler);
 WORK_DEFINE(low_prio, 5, low_prio_handler);
 
 void application_main(void)
@@ -53,7 +53,6 @@ void low_prio_handler(struct work *work)
     work_schedule_again(&low_prio, 2000);
 
     LOG_INF("LOW start");
-    work_schedule_after(&high_prio, 200);
     system_busy_sleep_ms(1000);
     LOG_INF("LOW done");
 }

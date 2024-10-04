@@ -8,8 +8,6 @@ extern TIM_HandleTypeDef htim3;  ///< 16 bit timer for wakeup (10 kHz clock)
 
 extern UART_HandleTypeDef huart2;
 
-extern EXTI_HandleTypeDef hexti0;
-
 static uint32_t uptime_high32 = 0;
 static uint32_t critical_section_depth = 0;
 
@@ -65,7 +63,7 @@ void system_busy_sleep_us(u64_us_t delay)
     }
 }
 
-void system_timer_schedule_at(u64_ms_t uptime)
+void system_wakeup_schedule_at(u64_ms_t uptime)
 {
     u64_us_t now = system_uptime_get_us();
     uint64_t timer_period;
@@ -82,8 +80,6 @@ void system_timer_schedule_at(u64_ms_t uptime)
         timer_period = 0x10000;
     }
 
-    system_critical_section_enter();
-
     __HAL_TIM_DISABLE(&htim3);
 
     __HAL_TIM_SetAutoreload(&htim3, timer_period - 1);
@@ -92,8 +88,6 @@ void system_timer_schedule_at(u64_ms_t uptime)
     __HAL_TIM_CLEAR_IT(&htim3, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);
     __HAL_TIM_ENABLE(&htim3);
-
-    system_critical_section_exit();
 }
 
 void system_enter_sleep_mode(void)
@@ -121,11 +115,6 @@ void system_fatal_error(void)
     }
 }
 
-void system_softirq_trigger(void)
-{
-    HAL_EXTI_GenerateSWI(&hexti0);
-}
-
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim == &htim2) {
@@ -134,9 +123,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
 
     if (htim == &htim3) {
-        // system timer expired: disable timer and invoke callback
+        // system timer expired: disable timer
         __HAL_TIM_DISABLE(&htim3);
         __HAL_TIM_DISABLE_IT(&htim3, TIM_IT_UPDATE);
-        system_timer_handler();
     }
 }
